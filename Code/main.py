@@ -26,6 +26,8 @@ from transformers import DataCollatorForSeq2Seq
 from datasets import load_dataset
 from transformers import AutoTokenizer
 
+from torch.utils.tensorboard import SummaryWriter
+
 def preprocess_function_en_fr(examples):
     inputs = [ex["en"] for ex in examples["translation"]]
     targets = [ex["fr"] for ex in examples["translation"]]
@@ -219,6 +221,8 @@ if __name__ == "__main__":
     
     model.train()
 
+    writer = SummaryWriter()
+
     cross_entropy = nn.CrossEntropyLoss()
 
     for epoch in range(num_epochs):
@@ -245,3 +249,5 @@ if __name__ == "__main__":
             lr_scheduler.step()
             optimizer.zero_grad()
             progress_bar.update(1)
+
+    writer.close()
