@@ -228,7 +228,7 @@ if __name__ == "__main__":
     for epoch in range(num_epochs):
         for batch in train_dataloader_en_fr:
             batch = {k: v.to(device) for k, v in batch.items()}
-            trans1_inter_output, trans1_output, trans2_inter_output, trans2_output = model(batch['input_ids'], batch['labels'], tokenized_datasets_en_fr.pad_token_id)
+            trans1_inter_output, trans1_output, trans2_inter_output, trans2_output = model(batch['input_ids'], batch['labels'], tokenizer_en_fr.pad_token_id)
             # input_ids(src) == lan1
             # labels == lan2
             
