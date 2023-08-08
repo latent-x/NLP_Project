@@ -2,6 +2,7 @@ from model import *
 
 import copy
 from tqdm.auto import tqdm
+import os
 
 from typing import Optional, Any, Union, Callable
 import torch
@@ -40,6 +41,8 @@ def preprocess_function_en_fr(examples):
 if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
+    os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
     torch.autograd.set_detect_anomaly(True)
 
     #####
@@ -89,17 +92,17 @@ if __name__ == "__main__":
         globals()['lan1_lan2_self_attention' + str(i)] = MultiheadAttention(d_model, nhead, dropout=dropout_attention, 
                                                                     batch_first=batch_first, device = device)
 
-    # define encoderlayer for language1
+    # define encoderlayer for lan1 -> lan2
     for i in range(1, n_layers + 1):
         kwargs = {'self_attn': globals()['lan1_self_attention' + str(i)]}
         globals()['lan1_encoder_layer' + str(i)] = ProposedEncoderLayer(d_model = d_model, nhead = nhead, device = device, batch_first = batch_first, **kwargs)
 
-    # define encoderlayer for language2
+    # define encoderlayer for lan2 -> lan1
     for i in range(1, n_layers + 1):
         kwargs = {'self_attn': globals()['lan2_self_attention' + str(i)]}
         globals()['lan2_encoder_layer' + str(i)] = ProposedEncoderLayer(d_model = d_model, nhead = nhead, device = device, batch_first = batch_first, **kwargs)
 
-    # define decoderlayer for language1
+    # define decoderlayer for lan1 -> lan2
     for i in range(1, n_layers + 1):
         kwargs = {
             'self_attn': globals()['lan2_self_attention' + str(i)], 
@@ -107,7 +110,7 @@ if __name__ == "__main__":
             }
         globals()['lan1_decoder_layer' + str(i)] = ProposedDecoderLayer(d_model = d_model, nhead = nhead, device = device, batch_first = batch_first, **kwargs)
         
-    # define decoderlayer for langauge2
+    # define decoderlayer for lan2 -> lan1
     for i in range(1, n_layers + 1):
         kwargs = {
             'self_attn': globals()['lan1_self_attention' + str(i)], 
@@ -191,13 +194,13 @@ if __name__ == "__main__":
     train_dataloader_en_fr = DataLoader(
         tokenized_datasets_en_fr["train"],
         shuffle = True,
-        batch_size = 64,
+        batch_size = 16,
         collate_fn = data_collator_en_fr,
     )
 
     eval_dataloader_en_fr = DataLoader(
         tokenized_datasets_en_fr["validation"],
-        batch_size = 64,
+        batch_size = 16,
         collate_fn = data_collator_en_fr,
     )
 
@@ -236,29 +239,33 @@ if __name__ == "__main__":
         for b in train_dataloader_en_fr:
             batch = {k: v.to(device) for k, v in b.items()}
 
+            lan1 = batch['input_ids']
+            lan2 = batch['labels']
+            lan1_ = lan1.clone().detach()
+            lan1_[lan1 == -100] = tokenizer_en_fr.pad_token_id
+            lan2_ = lan2.clone().detach()
+            lan2_[lan2 == -100] = tokenizer_en_fr.pad_token_id
+
             start_lan1_inter_prob, start_lan1_output_prob, start_lan2_inter_prob, start_lan2_output_prob\
-                    = model(batch['input_ids'], batch['labels'], tokenizer_en_fr.pad_token_id)
-            # input_ids(src) == lan1
-            # labels == lan2
-            
-            # start from lan1
+                    = model(lan1_, lan2_, tokenizer_en_fr.pad_token_id)
+
             start_lan1_inter_prob_2d = start_lan1_inter_prob.contiguous().view(-1, start_lan1_inter_prob.shape[-1])
-            tgt_start_lan1_inter = batch['labels'].contiguous().view(-1)
+            tgt_start_lan1_inter = lan2_.contiguous().view(-1)
             loss_lan1_sample_lan2_vs_tgt_lan2 = cross_entropy(start_lan1_inter_prob_2d, tgt_start_lan1_inter)
 
             start_lan1_output_prob_2d = start_lan1_output_prob.contiguous().view(-1, start_lan1_output_prob.shape[-1])            
-            tgt_start_lan1_output = batch['input_ids'].contiguous().view(-1)
+            tgt_start_lan1_output = lan1_.contiguous().view(-1)
 
             loss_lan1_sample_lan1_vs_tgt_lan1 = cross_entropy(start_lan1_output_prob_2d, tgt_start_lan1_output)
             loss_lan1 = loss_lan1_sample_lan2_vs_tgt_lan2 + loss_lan1_sample_lan1_vs_tgt_lan1
 
             # start from lan2
             start_lan2_inter_prob_2d = start_lan2_inter_prob.contiguous().view(-1, start_lan2_inter_prob.shape[-1])
-            tgt_start_lan2_inter = batch['input_ids'].contiguous().view(-1)
+            tgt_start_lan2_inter = lan1_.contiguous().view(-1)
             loss_lan2_sample_lan1_vs_tgt_lan1 = cross_entropy(start_lan2_inter_prob_2d, tgt_start_lan2_inter)
             
             start_lan2_output_prob_2d = start_lan2_output_prob.contiguous().view(-1, start_lan2_output_prob.shape[-1])
-            tgt_start_lan2_output = batch['labels'].contiguous().view(-1)
+            tgt_start_lan2_output = lan2_.contiguous().view(-1)
 
             loss_lan2_smaple_lan2_vs_tgt_lan2 = cross_entropy(start_lan2_output_prob_2d, tgt_start_lan2_output)
             loss_lan2 = loss_lan2_sample_lan1_vs_tgt_lan1 + loss_lan2_smaple_lan2_vs_tgt_lan2
