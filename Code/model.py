@@ -386,7 +386,8 @@ class WrapperForTransformer(nn.Module):
         src_pos = self.pos_embedding(src_)
 
         # clean up all -100s in the labels
-        tgt[tgt == -100] = pad_idx
+        tgt_clone = tgt.clone
+        tgt_clone[tgt == -100] = pad_idx
 
         tgt_ = self.tok_embedding_lan2(tgt)
         tgt_pos = self.pos_embedding(tgt_)
