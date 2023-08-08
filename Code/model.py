@@ -381,15 +381,17 @@ class WrapperForTransformer(nn.Module):
             self.transformer = kwargs['transformer']
 
     def forward(self, src: Tensor, tgt: Tensor, pad_idx) -> Tensor:
+        src_clone = src.clone().detach()
+        src_clone[src == -100] = pad_idx
 
-        src_ = self.tok_embedding_lan1(src)
+        src_ = self.tok_embedding_lan1(src_clone)
         src_pos = self.pos_embedding(src_)
 
         # clean up all -100s in the labels
         tgt_clone = tgt.clone().detach()
         tgt_clone[tgt == -100] = pad_idx
 
-        tgt_ = self.tok_embedding_lan2(tgt)
+        tgt_ = self.tok_embedding_lan2(tgt_clone)
         tgt_pos = self.pos_embedding(tgt_)
 
         src_mask, tgt_mask, _, _ = self.create_mask(src_pos, tgt_pos, pad_idx)
