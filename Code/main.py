@@ -224,7 +224,7 @@ if __name__ == "__main__":
 
     writer = SummaryWriter()
 
-    cross_entropy = nn.CrossEntropyLoss()
+    cross_entropy = nn.CrossEntropyLoss(ignore_index = tokenizer_en_fr.pad_token_id)
 
     for epoch in range(num_epochs):
         for batch in train_dataloader_en_fr:
@@ -234,17 +234,13 @@ if __name__ == "__main__":
             # labels == lan2
             
             # start from lan1
-            loss_lan1_sample_lan2_vs_tgt_lan2 = cross_entropy(start_lan1_inter_prob, batch['labels'], 
-                                                              ignore_index = tokenizer_en_fr.pad_token_id)
-            loss_lan1_sample_lan1_vs_tgt_lan1 = cross_entropy(start_lan1_output_prob, batch['input_ids'], 
-                                                              ignore_index = tokenizer_en_fr.pad_token_id)
+            loss_lan1_sample_lan2_vs_tgt_lan2 = cross_entropy(start_lan1_inter_prob, batch['labels'])
+            loss_lan1_sample_lan1_vs_tgt_lan1 = cross_entropy(start_lan1_output_prob, batch['input_ids'])
             loss_lan1 = loss_lan1_sample_lan2_vs_tgt_lan2 + loss_lan1_sample_lan1_vs_tgt_lan1
 
             # start from lan2
-            loss_lan2_sample_lan1_vs_tgt_lan1 = cross_entropy(start_lan2_inter_prob, batch['input_ids'],
-                                                              ignore_index = tokenizer_en_fr.pad_token_id)
-            loss_lan2_smaple_lan2_vs_tgt_lan2 = cross_entropy(start_lan2_output_prob, batch['labels'],
-                                                              ignore_index = tokenizer_en_fr.pad_token_id)
+            loss_lan2_sample_lan1_vs_tgt_lan1 = cross_entropy(start_lan2_inter_prob, batch['input_ids'])
+            loss_lan2_smaple_lan2_vs_tgt_lan2 = cross_entropy(start_lan2_output_prob, batch['labels'])
             loss_lan2 = loss_lan2_sample_lan1_vs_tgt_lan1 + loss_lan2_smaple_lan2_vs_tgt_lan2
             
             loss = loss_lan1 + loss_lan2
