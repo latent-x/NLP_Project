@@ -39,6 +39,8 @@ def preprocess_function_en_fr(examples):
 
 if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    
+    torch.autograd.set_detect_anomaly(True)
 
     #####
     # Part1. Preparing the data
@@ -215,6 +217,9 @@ if __name__ == "__main__":
         num_training_steps=num_training_steps
     )
 
+    with torch.autograd.detect_anomaly():
+        print("before strat training epoch, confirm")
+
     # model to device
     model.to(device)
 
@@ -230,19 +235,26 @@ if __name__ == "__main__":
         loss = []
         for b in train_dataloader_en_fr:
             batch = {k: v.to(device) for k, v in b.items()}
-            start_lan1_inter_prob, start_lan1_output_prob, start_lan2_inter_prob, start_lan2_output_prob\
-                = model(batch['input_ids'], batch['labels'], tokenizer_en_fr.pad_token_id)
+
+            with torch.autograd.detect_anomaly():
+                start_lan1_inter_prob, start_lan1_output_prob, start_lan2_inter_prob, start_lan2_output_prob\
+                    = model(batch['input_ids'], batch['labels'], tokenizer_en_fr.pad_token_id)
+                print("pass 242")
             # input_ids(src) == lan1
             # labels == lan2
             
             # start from lan1
-            start_lan1_inter_prob_2d = start_lan1_inter_prob.contiguous().view(-1, start_lan1_inter_prob.shape[-1])
-            tgt_start_lan1_inter = batch['labels'].contiguous().view(-1)
-            loss_lan1_sample_lan2_vs_tgt_lan2 = cross_entropy(start_lan1_inter_prob_2d, tgt_start_lan1_inter)
+            with torch.autograd.detect_anomaly():
+                start_lan1_inter_prob_2d = start_lan1_inter_prob.contiguous().view(-1, start_lan1_inter_prob.shape[-1])
+                tgt_start_lan1_inter = batch['labels'].contiguous().view(-1)
+                loss_lan1_sample_lan2_vs_tgt_lan2 = cross_entropy(start_lan1_inter_prob_2d, tgt_start_lan1_inter)
+                print("pass 251")
 
-            start_lan1_output_prob_2d = start_lan1_output_prob.contiguous().view(-1, start_lan1_output_prob.shape[-1])            
-            tgt_start_lan1_output = batch['input_ids'].contiguous().view(-1)
-            
+            with torch.autograd.detect_anomaly():
+                start_lan1_output_prob_2d = start_lan1_output_prob.contiguous().view(-1, start_lan1_output_prob.shape[-1])            
+                tgt_start_lan1_output = batch['input_ids'].contiguous().view(-1)
+                print("pass 256")
+                
             loss_lan1_sample_lan1_vs_tgt_lan1 = cross_entropy(start_lan1_output_prob_2d, tgt_start_lan1_output)
             loss_lan1 = loss_lan1_sample_lan2_vs_tgt_lan2 + loss_lan1_sample_lan1_vs_tgt_lan1
 
