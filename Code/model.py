@@ -382,14 +382,14 @@ class WrapperForTransformer(nn.Module):
 
     def forward(self, src: Tensor, tgt: Tensor, pad_idx) -> Tensor:
 
-        src = self.tok_embedding_lan1(src)
-        src_pos = self.pos_embedding(src)
+        src_ = self.tok_embedding_lan1(src)
+        src_pos = self.pos_embedding(src_)
 
         # clean up all -100s in the labels
         tgt[tgt == -100] = pad_idx
 
-        tgt = self.tok_embedding_lan2(tgt)
-        tgt_pos = self.pos_embedding(tgt)
+        tgt_ = self.tok_embedding_lan2(tgt)
+        tgt_pos = self.pos_embedding(tgt_)
 
         src_mask, tgt_mask, _, _ = self.create_mask(src_pos, tgt_pos, pad_idx)
 
@@ -499,6 +499,6 @@ class ProposedModel(nn.Module):
                 lan_output_prob - (batch, lan_seq_len, vocab_size)
         '''
         lan_output_vocabsize = linear_layer(lan_output)
-        lan_output_prob = nn.functional.softmax(lan_output_vocabsize, dim = 2).clone()
+        lan_output_prob = nn.functional.softmax(lan_output_vocabsize, dim = 2)
 
         return lan_output_prob
