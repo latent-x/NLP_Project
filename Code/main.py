@@ -228,30 +228,32 @@ if __name__ == "__main__":
 
     for epoch in range(num_epochs):
         loss = []
-        for batch in train_dataloader_en_fr:
-            batch = {k: v.to(device) for k, v in batch.items()}
-            start_lan1_inter_prob, start_lan1_output_prob, start_lan2_inter_prob, start_lan2_output_prob = model(batch['input_ids'], batch['labels'], tokenizer_en_fr.pad_token_id)
+        for b in train_dataloader_en_fr:
+            batch = {k: v.to(device) for k, v in b.items()}
+            start_lan1_inter_prob, start_lan1_output_prob, start_lan2_inter_prob, start_lan2_output_prob\
+                = model(batch['input_ids'], batch['labels'], tokenizer_en_fr.pad_token_id)
             # input_ids(src) == lan1
             # labels == lan2
             
             # start from lan1
-            start_lan1_inter_prob = start_lan1_inter_prob.contiguous().view(-1, start_lan1_inter_prob.shape[-1])
-            loss_lan1_sample_lan2_vs_tgt_lan2 = cross_entropy(start_lan1_inter_prob, 
-                                                              batch['labels'].contiguous().view(-1))
+            start_lan1_inter_prob_2d = start_lan1_inter_prob.contiguous().view(-1, start_lan1_inter_prob.shape[-1])
+            tgt_start_lan1_inter = batch['labels'].contiguous().view(-1)
+            loss_lan1_sample_lan2_vs_tgt_lan2 = cross_entropy(start_lan1_inter_prob_2d, tgt_start_lan1_inter)
 
-            start_lan1_output_prob = start_lan1_output_prob.contiguous().view(-1, start_lan1_output_prob.shape[-1])            
-            loss_lan1_sample_lan1_vs_tgt_lan1 = cross_entropy(start_lan1_output_prob, 
-                                                              batch['input_ids'].contiguous().view(-1))
+            start_lan1_output_prob_2d = start_lan1_output_prob.contiguous().view(-1, start_lan1_output_prob.shape[-1])            
+            tgt_start_lan1_output = batch['input_ids'].contiguous().view(-1)
+            
+            loss_lan1_sample_lan1_vs_tgt_lan1 = cross_entropy(start_lan1_output_prob_2d, tgt_start_lan1_output)
             loss_lan1 = loss_lan1_sample_lan2_vs_tgt_lan2 + loss_lan1_sample_lan1_vs_tgt_lan1
 
             # start from lan2
-            start_lan2_inter_prob = start_lan2_inter_prob.contiguous().view(-1, start_lan2_inter_prob.shape[-1])
-            loss_lan2_sample_lan1_vs_tgt_lan1 = cross_entropy(start_lan2_inter_prob, 
-                                                              batch['input_ids'].contiguous().view(-1))
+            start_lan2_inter_prob_2d = start_lan2_inter_prob.contiguous().view(-1, start_lan2_inter_prob.shape[-1])
+            tgt_start_lan2_inter = batch['input_ids'].contiguous().view(-1)
+            loss_lan2_sample_lan1_vs_tgt_lan1 = cross_entropy(start_lan2_inter_prob_2d, tgt_start_lan2_inter)
             
-            start_lan2_output_prob = start_lan2_output_prob.contiguous().view(-1, start_lan2_output_prob.shape[-1])
-            loss_lan2_smaple_lan2_vs_tgt_lan2 = cross_entropy(start_lan2_output_prob, 
-                                                              batch['labels'].contiguous().view(-1))
+            start_lan2_output_prob_2d = start_lan2_output_prob.contiguous().view(-1, start_lan2_output_prob.shape[-1])
+            tgt_start_lan2_output = batch['labels'].contiguous().view(-1)
+            loss_lan2_smaple_lan2_vs_tgt_lan2 = cross_entropy(start_lan2_output_prob_2d, tgt_start_lan2_output)
             loss_lan2 = loss_lan2_sample_lan1_vs_tgt_lan1 + loss_lan2_smaple_lan2_vs_tgt_lan2
             
             loss = loss_lan1 + loss_lan2
@@ -270,4 +272,5 @@ if __name__ == "__main__":
         print("epoch: {}, loss: {}".format(epoch, np.mean(loss)))
 
     writer.close()
+    torch.save(model, "test.pt")
 

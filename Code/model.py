@@ -499,6 +499,6 @@ class ProposedModel(nn.Module):
                 lan_output_prob - (batch, lan_seq_len, vocab_size)
         '''
         lan_output_vocabsize = linear_layer(lan_output)
-        lan_output_prob = nn.functional.softmax(lan_output_vocabsize, dim = 2)
+        lan_output_prob = nn.functional.softmax(lan_output_vocabsize, dim = 2).clone()
 
         return lan_output_prob
