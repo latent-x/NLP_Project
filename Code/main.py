@@ -254,19 +254,25 @@ if __name__ == "__main__":
                 start_lan1_output_prob_2d = start_lan1_output_prob.contiguous().view(-1, start_lan1_output_prob.shape[-1])            
                 tgt_start_lan1_output = batch['input_ids'].contiguous().view(-1)
                 print("pass 256")
-                
-            loss_lan1_sample_lan1_vs_tgt_lan1 = cross_entropy(start_lan1_output_prob_2d, tgt_start_lan1_output)
-            loss_lan1 = loss_lan1_sample_lan2_vs_tgt_lan2 + loss_lan1_sample_lan1_vs_tgt_lan1
+
+            with torch.autograd.detect_anomaly():
+                loss_lan1_sample_lan1_vs_tgt_lan1 = cross_entropy(start_lan1_output_prob_2d, tgt_start_lan1_output)
+                loss_lan1 = loss_lan1_sample_lan2_vs_tgt_lan2 + loss_lan1_sample_lan1_vs_tgt_lan1
+                print("pass 261")
 
             # start from lan2
-            start_lan2_inter_prob_2d = start_lan2_inter_prob.contiguous().view(-1, start_lan2_inter_prob.shape[-1])
-            tgt_start_lan2_inter = batch['input_ids'].contiguous().view(-1)
-            loss_lan2_sample_lan1_vs_tgt_lan1 = cross_entropy(start_lan2_inter_prob_2d, tgt_start_lan2_inter)
+            with torch.autograd.detect_anomaly():
+                start_lan2_inter_prob_2d = start_lan2_inter_prob.contiguous().view(-1, start_lan2_inter_prob.shape[-1])
+                tgt_start_lan2_inter = batch['input_ids'].contiguous().view(-1)
+                loss_lan2_sample_lan1_vs_tgt_lan1 = cross_entropy(start_lan2_inter_prob_2d, tgt_start_lan2_inter)
+                print("pass 268")
             
-            start_lan2_output_prob_2d = start_lan2_output_prob.contiguous().view(-1, start_lan2_output_prob.shape[-1])
-            tgt_start_lan2_output = batch['labels'].contiguous().view(-1)
-            loss_lan2_smaple_lan2_vs_tgt_lan2 = cross_entropy(start_lan2_output_prob_2d, tgt_start_lan2_output)
-            loss_lan2 = loss_lan2_sample_lan1_vs_tgt_lan1 + loss_lan2_smaple_lan2_vs_tgt_lan2
+            with torch.autograd.detect_anomaly():
+                start_lan2_output_prob_2d = start_lan2_output_prob.contiguous().view(-1, start_lan2_output_prob.shape[-1])
+                tgt_start_lan2_output = batch['labels'].contiguous().view(-1)
+                loss_lan2_smaple_lan2_vs_tgt_lan2 = cross_entropy(start_lan2_output_prob_2d, tgt_start_lan2_output)
+                loss_lan2 = loss_lan2_sample_lan1_vs_tgt_lan1 + loss_lan2_smaple_lan2_vs_tgt_lan2
+                print("pass 275")
             
             loss = loss_lan1 + loss_lan2
 
