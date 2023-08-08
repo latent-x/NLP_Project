@@ -70,6 +70,7 @@ if __name__ == "__main__":
     dropout_attention = 0.0
     batch_first = True
     n_layers = 6
+    vocab_size = tokenizer_en_fr.vocab_size
 
     # define language1 self attetntion 6ea
     for i in range(1, n_layers + 1):
@@ -178,7 +179,7 @@ if __name__ == "__main__":
                             'transformer': customized_transformer2}
     wrap_transformer2 =  WrapperForTransformer(d_model = d_model, dropout_rate = 0.1, max_len = max_length, device = device, **kwargs_transformer1)
 
-    model = ProposedModel(wrap_transformer1, wrap_transformer2)
+    model = ProposedModel(wrap_transformer1, wrap_transformer2, d_model, vocab_size)
 
     #####
     # Part3. Define DataLoader
@@ -228,22 +229,27 @@ if __name__ == "__main__":
     for epoch in range(num_epochs):
         for batch in train_dataloader_en_fr:
             batch = {k: v.to(device) for k, v in batch.items()}
-            trans1_inter_output, trans1_output, trans2_inter_output, trans2_output = model(batch['input_ids'], batch['labels'], tokenizer_en_fr.pad_token_id)
+            start_lan1_inter_prob, start_lan1_output_prob, start_lan2_inter_prob, start_lan2_output_prob = model(batch['input_ids'], batch['labels'], tokenizer_en_fr.pad_token_id)
             # input_ids(src) == lan1
             # labels == lan2
             
-            # src: lan1, tgt: lan2
-            loss_lan1_sample_lan2_vs_tgt_lan2 = cross_entropy(trans1_inter_output, batch['labels'])
-            loss_lan1_sample_lan1_vs_tgt_lan1 = cross_entropy(trans1_output, batch['input_ids'])
+            # start from lan1
+            loss_lan1_sample_lan2_vs_tgt_lan2 = cross_entropy(start_lan1_inter_prob, batch['labels'], 
+                                                              ignore_index = tokenizer_en_fr.pad_token_id)
+            loss_lan1_sample_lan1_vs_tgt_lan1 = cross_entropy(start_lan1_output_prob, batch['input_ids'], 
+                                                              ignore_index = tokenizer_en_fr.pad_token_id)
             loss_lan1 = loss_lan1_sample_lan2_vs_tgt_lan2 + loss_lan1_sample_lan1_vs_tgt_lan1
 
-            # src: lan2
-            loss_lan2_sample_lan1_vs_tgt_lan1 = cross_entropy(trans2_inter_output, batch['input_ids'])
-            loss_lan2_smaple_lan2_vs_tgt_lan2 = cross_entropy(trans2_output, batch['labels'])
+            # start from lan2
+            loss_lan2_sample_lan1_vs_tgt_lan1 = cross_entropy(start_lan2_inter_prob, batch['input_ids'],
+                                                              ignore_index = tokenizer_en_fr.pad_token_id)
+            loss_lan2_smaple_lan2_vs_tgt_lan2 = cross_entropy(start_lan2_output_prob, batch['labels'],
+                                                              ignore_index = tokenizer_en_fr.pad_token_id)
             loss_lan2 = loss_lan2_sample_lan1_vs_tgt_lan1 + loss_lan2_smaple_lan2_vs_tgt_lan2
             
-            loss_lan1.backward()
-            loss_lan2.backward()
+            loss = loss_lan1 + loss_lan2
+
+            loss.backward()
 
             optimizer.step()
             lr_scheduler.step()
@@ -251,3 +257,4 @@ if __name__ == "__main__":
             progress_bar.update(1)
 
     writer.close()
+

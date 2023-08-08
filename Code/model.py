@@ -359,8 +359,6 @@ class PositionalEncoding(nn.Module):
 
     def forward(self, x):
         # x: (batch_size, seq_len, d_model)
-        print(x.shape)
-        print(self.pe[:x.size(0), :].shape)
         x = x + self.pe[:x.size(0), :] # (batch_size, seq_len, d_model)
         x = self.dropout(x) # (batch_size, seq_len, d_model)
 
@@ -418,17 +416,89 @@ class WrapperForTransformer(nn.Module):
         return src_mask, tgt_mask, src_padding_mask, tgt_padding_mask
 
 class ProposedModel(nn.Module):
-    def __init__(self, transformer1, transformer2):
+    def __init__(self, transformer1, transformer2, d_model, vocab_size):
         super(ProposedModel, self).__init__()
 
         self.transformer1 = transformer1
         self.transformer2 = transformer2
+        self.d_model = d_model
+        self.vocab_size = vocab_size
+
+        self.lan2_linear = nn.Linear(d_model, vocab_size)
+        self.lan1_linear = nn.Linear(d_model, vocab_size)
 
     def forward(self, lan1, lan2, pad_idx):
-        lan1_2_inter_output = self.transformer1(lan1, lan2, pad_idx)
-        lan1_2_output = self.transformer2(lan1_2_inter_output, lan1, pad_idx)
+        # start from lan1
+        ## lan1 -> lan2
+        '''
+            args: lan1, lan2
+                lan1 - (batch, lan1_seq_len)
+                lan2 - (batch, lan2_seq_len)
+            results:
+                start_lan1_inter_output - (batch, lan2_seq_len, d_model)
+        '''
+        start_lan1_inter_output = self.transformer1(lan1, lan2, pad_idx)
+        
+        ## find probability
+        start_lan1_inter_prob = self.lan_emb_to_prob(start_lan1_inter_output, self.lan2_linear)
+        
+        ## find token
+        start_lan1_inter_token = torch.argmax(start_lan1_inter_prob, dim = 2)
 
-        lan2_1_inter_output = self.transformer2(lan2, lan1, pad_idx)
-        lan2_1_output = self.transformer1(lan2_1_inter_output, lan2, pad_idx)
+        ## lan2 -> lan1
+        '''
+            args: start_lan1_inter_token, lan1
+                start_lan1_inter_token - (batch, lan2_seq_len) -> they are langauge2 sentences
+                lan1 - (batch, lan1_seq_len)
+            results:
+                start_lan1_output - (batch, lan1_seq_len, d_model)
+        '''
+        start_lan1_output = self.transformer2(start_lan1_inter_token, lan1, pad_idx)
 
-        return lan1_2_inter_output, lan1_2_output, lan2_1_inter_output, lan2_1_output
+        ## find probability
+        start_lan1_output_prob = self.lan_emb_to_prob(start_lan1_output, self.lan1_linear)
+
+        # start from lan2
+        ## lan2 -> lan1
+        '''
+            args: lan2, lan1
+                lan2 - (batch, lan2_seq_len)
+                lan1 - (batch, lan1_seq_len)
+            results:
+                start_lan2_inter_output - (batch, lan1_seq_len, d_model)
+        '''
+        start_lan2_inter_output = self.transformer2(lan2, lan1, pad_idx)
+
+        ## find probability
+        start_lan2_inter_prob = self.lan_emb_to_prob(start_lan2_inter_output, self.lan1_linear)
+
+        ## find token
+        start_lan2_inter_token = torch.argmax(start_lan2_inter_prob, dim = 2)
+
+        ## lan1 -> lan2
+        '''
+            args: start_lan2_inter_output, lan2
+                start_lan2_inter_output - (batch, lan1_seq_len) -> they are langauge1 sentences
+                lan2 - (batch, lan2_seq_len)   
+            results:
+                start_lan2_output - (batch, lan2_seq_len, d_model)
+        '''
+        start_lan2_output = self.transformer1(start_lan2_inter_token, lan2, pad_idx)
+
+        ## find probability
+        start_lan2_output_prob = self.lan_emb_to_prob(start_lan2_output, self.lan2_linear)
+
+        return start_lan1_inter_prob, start_lan1_output_prob, start_lan2_inter_prob, start_lan2_output_prob
+
+    def lan_emb_to_prob(self, lan_output, linear_layer):
+        '''
+            args: lan_output, linear_layer
+                lan_output - (batch, lan_seq_len, d_model)
+                linear_layer - nn.Linear(d_model, vocab_size)
+            results:
+                lan_output_prob - (batch, lan_seq_len, vocab_size)
+        '''
+        lan_output_vocabsize = linear_layer(lan_output)
+        lan_output_prob = nn.functional.softmax(lan_output_vocabsize, dim = 2)
+
+        return lan_output_prob
