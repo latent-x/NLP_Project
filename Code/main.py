@@ -237,9 +237,15 @@ if __name__ == "__main__":
     for epoch in range(num_epochs):
         loss = []
         for b in train_dataloader_en_fr:
+            train_tf = True
+            
             try:
                 batch = {k: v.to(device) for k, v in b.items()}
-                
+                train_tf = True
+            except:
+                train_tf = False
+            
+            if train_tf:
                 lan1 = batch['input_ids']
                 lan2 = batch['labels']
                 lan1_ = lan1.clone().detach()
@@ -282,8 +288,6 @@ if __name__ == "__main__":
                 progress_bar.update(1)
 
                 loss.append(loss_.item)
-            except:
-                pass
             
             del batch
 
