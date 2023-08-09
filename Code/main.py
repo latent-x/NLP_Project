@@ -33,7 +33,7 @@ def preprocess_function_en_fr(examples):
     inputs = []
     targets = []
     for ex in examples["translation"]:
-        if (len(ex["en"]) > 300) | (len(ex["fr"]) > 300):
+        if (len(ex["en"]) > 100) | (len(ex["fr"]) > 100):
             pass
         else:
             inputs.append(ex["en"])
@@ -200,13 +200,13 @@ if __name__ == "__main__":
     train_dataloader_en_fr = DataLoader(
         tokenized_datasets_en_fr["train"],
         shuffle = True,
-        batch_size = 32,
+        batch_size = 64,
         collate_fn = data_collator_en_fr,
     )
 
     eval_dataloader_en_fr = DataLoader(
         tokenized_datasets_en_fr["validation"],
-        batch_size = 32,
+        batch_size = 64,
         collate_fn = data_collator_en_fr,
     )
 
@@ -216,7 +216,7 @@ if __name__ == "__main__":
     optimizer = AdamW(model.parameters(), lr = 5e-5)
 
     # lr scheduler
-    num_epochs = 1
+    num_epochs = 10
     num_training_steps = num_epochs * len(train_dataloader_en_fr)
 
     lr_scheduler = get_scheduler(
@@ -288,7 +288,7 @@ if __name__ == "__main__":
             optimizer.zero_grad()
             progress_bar.update(1)
 
-            loss.append(loss_.item)
+            loss.append(loss_.item())
             
             del batch
 
