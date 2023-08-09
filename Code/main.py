@@ -194,13 +194,13 @@ if __name__ == "__main__":
     train_dataloader_en_fr = DataLoader(
         tokenized_datasets_en_fr["train"],
         shuffle = True,
-        batch_size = 16,
+        batch_size = 4,
         collate_fn = data_collator_en_fr,
     )
 
     eval_dataloader_en_fr = DataLoader(
         tokenized_datasets_en_fr["validation"],
-        batch_size = 16,
+        batch_size = 4,
         collate_fn = data_collator_en_fr,
     )
 
@@ -210,7 +210,7 @@ if __name__ == "__main__":
     optimizer = AdamW(model.parameters(), lr = 5e-5)
 
     # lr scheduler
-    num_epochs = 10
+    num_epochs = 1
     num_training_steps = num_epochs * len(train_dataloader_en_fr)
 
     lr_scheduler = get_scheduler(
@@ -237,7 +237,7 @@ if __name__ == "__main__":
     for epoch in range(num_epochs):
         loss = []
         for b in train_dataloader_en_fr:
-            batch = {k: v.type(torch.ShortTensor).to(device) for k, v in b.items()}
+            batch = {k: v.to(device) for k, v in b.items()}
 
             lan1 = batch['input_ids']
             lan2 = batch['labels']
@@ -251,22 +251,22 @@ if __name__ == "__main__":
 
             # start from lan1
             start_lan1_inter_prob_2d = start_lan1_inter_prob.contiguous().view(-1, start_lan1_inter_prob.shape[-1])
-            tgt_start_lan1_inter = lan2_.contiguous().view(-1).type(torch.LongTensor)
+            tgt_start_lan1_inter = lan2_.contiguous().view(-1)
             loss_lan1_sample_lan2_vs_tgt_lan2 = cross_entropy(start_lan1_inter_prob_2d, tgt_start_lan1_inter)
 
             start_lan1_output_prob_2d = start_lan1_output_prob.contiguous().view(-1, start_lan1_output_prob.shape[-1])            
-            tgt_start_lan1_output = lan1_.contiguous().view(-1).type(torch.LongTensor)
+            tgt_start_lan1_output = lan1_.contiguous().view(-1)
             loss_lan1_sample_lan1_vs_tgt_lan1 = cross_entropy(start_lan1_output_prob_2d, tgt_start_lan1_output)
             
             loss_lan1 = loss_lan1_sample_lan2_vs_tgt_lan2 + loss_lan1_sample_lan1_vs_tgt_lan1
 
             # start from lan2
             start_lan2_inter_prob_2d = start_lan2_inter_prob.contiguous().view(-1, start_lan2_inter_prob.shape[-1])
-            tgt_start_lan2_inter = lan1_.contiguous().view(-1).type(torch.LongTensor)
+            tgt_start_lan2_inter = lan1_.contiguous().view(-1)
             loss_lan2_sample_lan1_vs_tgt_lan1 = cross_entropy(start_lan2_inter_prob_2d, tgt_start_lan2_inter)
             
             start_lan2_output_prob_2d = start_lan2_output_prob.contiguous().view(-1, start_lan2_output_prob.shape[-1])
-            tgt_start_lan2_output = lan2_.contiguous().view(-1).type(torch.LongTensor)
+            tgt_start_lan2_output = lan2_.contiguous().view(-1)
             loss_lan2_smaple_lan2_vs_tgt_lan2 = cross_entropy(start_lan2_output_prob_2d, tgt_start_lan2_output)
             
             loss_lan2 = loss_lan2_sample_lan1_vs_tgt_lan1 + loss_lan2_smaple_lan2_vs_tgt_lan2
