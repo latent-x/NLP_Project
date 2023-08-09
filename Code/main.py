@@ -57,7 +57,7 @@ if __name__ == "__main__":
     split_datasets = raw_datasets["train"].train_test_split(train_size = 0.99, seed = 20)
     split_datasets["validation"] = split_datasets.pop("test")
 
-    tokenizer_en_fr = AutoTokenizer.from_pretrained("Helsinki-NLP/opus-mt-en-fr", return_tensors = "pt")
+    tokenizer_en_fr = AutoTokenizer.from_pretrained("huggingface-course/marian-finetuned-kde4-en-to-fr", return_tensors = "pt")
 
     tokenized_datasets_en_fr = split_datasets.map(
         preprocess_function_en_fr,
@@ -237,7 +237,7 @@ if __name__ == "__main__":
     for epoch in range(num_epochs):
         loss = []
         for b in train_dataloader_en_fr:
-            batch = {k: v.to(device) for k, v in b.items()}
+            batch = {k: v.type(torch.ShortTensor).to(device) for k, v in b.items()}
 
             lan1 = batch['input_ids']
             lan2 = batch['labels']
@@ -249,25 +249,26 @@ if __name__ == "__main__":
             start_lan1_inter_prob, start_lan1_output_prob, start_lan2_inter_prob, start_lan2_output_prob\
                     = model(lan1_, lan2_, tokenizer_en_fr.pad_token_id)
 
+            # start from lan1
             start_lan1_inter_prob_2d = start_lan1_inter_prob.contiguous().view(-1, start_lan1_inter_prob.shape[-1])
-            tgt_start_lan1_inter = lan2_.contiguous().view(-1)
+            tgt_start_lan1_inter = lan2_.contiguous().view(-1).type(torch.LongTensor)
             loss_lan1_sample_lan2_vs_tgt_lan2 = cross_entropy(start_lan1_inter_prob_2d, tgt_start_lan1_inter)
 
             start_lan1_output_prob_2d = start_lan1_output_prob.contiguous().view(-1, start_lan1_output_prob.shape[-1])            
-            tgt_start_lan1_output = lan1_.contiguous().view(-1)
-
+            tgt_start_lan1_output = lan1_.contiguous().view(-1).type(torch.LongTensor)
             loss_lan1_sample_lan1_vs_tgt_lan1 = cross_entropy(start_lan1_output_prob_2d, tgt_start_lan1_output)
+            
             loss_lan1 = loss_lan1_sample_lan2_vs_tgt_lan2 + loss_lan1_sample_lan1_vs_tgt_lan1
 
             # start from lan2
             start_lan2_inter_prob_2d = start_lan2_inter_prob.contiguous().view(-1, start_lan2_inter_prob.shape[-1])
-            tgt_start_lan2_inter = lan1_.contiguous().view(-1)
+            tgt_start_lan2_inter = lan1_.contiguous().view(-1).type(torch.LongTensor)
             loss_lan2_sample_lan1_vs_tgt_lan1 = cross_entropy(start_lan2_inter_prob_2d, tgt_start_lan2_inter)
             
             start_lan2_output_prob_2d = start_lan2_output_prob.contiguous().view(-1, start_lan2_output_prob.shape[-1])
-            tgt_start_lan2_output = lan2_.contiguous().view(-1)
-
+            tgt_start_lan2_output = lan2_.contiguous().view(-1).type(torch.LongTensor)
             loss_lan2_smaple_lan2_vs_tgt_lan2 = cross_entropy(start_lan2_output_prob_2d, tgt_start_lan2_output)
+            
             loss_lan2 = loss_lan2_sample_lan1_vs_tgt_lan1 + loss_lan2_smaple_lan2_vs_tgt_lan2
             
             loss_ = loss_lan1 + loss_lan2
