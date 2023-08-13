@@ -283,14 +283,12 @@ if __name__ == "__main__":
                                       padding_idx=pad_idx)
 
     
-    kwargs_transformer1 = {'tok_embedding_lan1': tok_embedding,
-                            'tok_embedding_lan2': tok_embedding,
+    kwargs_transformer1 = {'tok_embedding': tok_embedding,
                             'transformer': customized_transformer1}
     wrap_transformer1 =  WrapperForTransformer(d_model = d_model, dropout_rate = 0.1, 
                                                max_len = max_length, device= device,**kwargs_transformer1)
 
-    kwargs_transformer2 = {'tok_embedding_lan1': tok_embedding,
-                            'tok_embedding_lan2': tok_embedding,
+    kwargs_transformer2 = {'tok_embedding': tok_embedding,
                             'transformer': customized_transformer2}
     wrap_transformer2 =  WrapperForTransformer(d_model = d_model, dropout_rate = 0.1, 
                                                max_len = max_length, device = device, **kwargs_transformer1)
@@ -318,7 +316,7 @@ if __name__ == "__main__":
     #####
     # Part4. Desing Training Loop
     #####
-    optimizer = AdamW(model.parameters(), lr = 0.001)
+    optimizer = torch.optim.Adam(model.parameters(), lr = 0.001, betas = (0.9, 0.98))
 
     # lr scheduler
     num_epochs = 10
@@ -327,7 +325,7 @@ if __name__ == "__main__":
     lr_scheduler = get_inverse_sqrt_schedule(
         optimizer=optimizer,
         num_warmup_steps=4000,
-        num_training_steps=num_training_steps
+        
     )
 
     # lr_scheduler = get_scheduler(
@@ -366,6 +364,9 @@ if __name__ == "__main__":
             
             lan1_ = batch['en'] # (batch, lan1_seq_len)
             lan2_ = batch['de'] # (batch, lan2_seq_len)
+            
+            lan1_decoder_output = lan1_[:, 1:].contiguous().view(-1)
+            lan2_decoder_output = lan2_[:, 1:].contiguous().view(-1)
 
             start_lan1_inter_prob, start_lan1_output_prob, start_lan2_inter_prob, start_lan2_output_prob\
                     = model(lan1_, lan2_, pad_idx, eos_idx)
@@ -373,28 +374,27 @@ if __name__ == "__main__":
             # start from lan1
             ## decoder prediction
             start_lan1_inter_prob_2d = start_lan1_inter_prob.contiguous().view(-1, start_lan1_inter_prob.shape[-1])
-            ## decoder output(label) ->      k1 K2 K3 ... KN [EOS]
-            tgt_start_lan1_inter = lan2_[:, 1:].contiguous().view(-1)
-            loss_lan1_sample_lan2_vs_tgt_lan2 = cross_entropy(start_lan1_inter_prob_2d, tgt_start_lan1_inter)
+
+            loss_lan1_sample_lan2_vs_tgt_lan2 = cross_entropy(start_lan1_inter_prob_2d, lan2_decoder_output)
 
             ## decoder prediction
             start_lan1_output_prob_2d = start_lan1_output_prob.contiguous().view(-1, start_lan1_output_prob.shape[-1])            
-            ## decoder output(label)
-            tgt_start_lan1_output = lan1_[:, 1:].contiguous().view(-1)
-            loss_lan1_sample_lan1_vs_tgt_lan1 = cross_entropy(start_lan1_output_prob_2d, tgt_start_lan1_output)
+
+            loss_lan1_sample_lan1_vs_tgt_lan1 = cross_entropy(start_lan1_output_prob_2d, lan1_decoder_output)
             
+            ### loss sum
             loss_lan1 = loss_lan1_sample_lan2_vs_tgt_lan2 + loss_lan1_sample_lan1_vs_tgt_lan1
 
             # start from lan2
             ## decoder prediction
             start_lan2_inter_prob_2d = start_lan2_inter_prob.contiguous().view(-1, start_lan2_inter_prob.shape[-1])
-            # decoder output(label) ->      k1 k2 k3 ... kn [EOS]
-            tgt_start_lan2_inter = lan1_[:, 1:].contiguous().view(-1)
-            loss_lan2_sample_lan1_vs_tgt_lan1 = cross_entropy(start_lan2_inter_prob_2d, tgt_start_lan2_inter)
+
+            loss_lan2_sample_lan1_vs_tgt_lan1 = cross_entropy(start_lan2_inter_prob_2d, lan1_decoder_output)
             
+            ## decoder prediction
             start_lan2_output_prob_2d = start_lan2_output_prob.contiguous().view(-1, start_lan2_output_prob.shape[-1])
-            tgt_start_lan2_output = lan2_[:, 1:].contiguous().view(-1)
-            loss_lan2_smaple_lan2_vs_tgt_lan2 = cross_entropy(start_lan2_output_prob_2d, tgt_start_lan2_output)
+
+            loss_lan2_smaple_lan2_vs_tgt_lan2 = cross_entropy(start_lan2_output_prob_2d, lan2_decoder_output)
             
             loss_lan2 = loss_lan2_sample_lan1_vs_tgt_lan1 + loss_lan2_smaple_lan2_vs_tgt_lan2
             
@@ -424,36 +424,35 @@ if __name__ == "__main__":
                     lan1_ = v_batch['en']
                     lan2_ = v_batch['de']
 
+                    lan1_decoder_output = lan1_[:, 1:].contiguous().view(-1)
+                    lan2_decoder_output = lan2_[:, 1:].contiguous().view(-1)
+
                     start_lan1_inter_prob, start_lan1_output_prob, start_lan2_inter_prob, start_lan2_output_prob\
                             = model(lan1_, lan2_, pad_idx, eos_idx)
 
                     # start from lan1
                     ## decoder prediction
                     start_lan1_inter_prob_2d = start_lan1_inter_prob.contiguous().view(-1, start_lan1_inter_prob.shape[-1])
-                    ## decoder output ->      k1 K2 K3 ... KN [EOS]
-                    tgt_start_lan1_inter = lan2_[:, 1:].contiguous().view(-1)
-                    loss_lan1_sample_lan2_vs_tgt_lan2 = cross_entropy(start_lan1_inter_prob_2d, tgt_start_lan1_inter)
+                    
+                    loss_lan1_sample_lan2_vs_tgt_lan2 = cross_entropy(start_lan1_inter_prob_2d, lan2_decoder_output)
 
                     ## decoder perdiction
                     start_lan1_output_prob_2d = start_lan1_output_prob.contiguous().view(-1, start_lan1_output_prob.shape[-1])            
-                    ## decoder output
-                    tgt_start_lan1_output = lan1_[:, 1:].contiguous().view(-1)
-                    loss_lan1_sample_lan1_vs_tgt_lan1 = cross_entropy(start_lan1_output_prob_2d, tgt_start_lan1_output)
+
+                    loss_lan1_sample_lan1_vs_tgt_lan1 = cross_entropy(start_lan1_output_prob_2d, lan1_decoder_output)
                     
                     loss_lan1 = loss_lan1_sample_lan2_vs_tgt_lan2 + loss_lan1_sample_lan1_vs_tgt_lan1
 
                     # start from lan2
                     ## decoder prediction
                     start_lan2_inter_prob_2d = start_lan2_inter_prob.contiguous().view(-1, start_lan2_inter_prob.shape[-1])
-                    ## decoder output ->       k1 k2 k3  ... kn [EOS]
-                    tgt_start_lan2_inter = lan1_[:, 1:].contiguous().view(-1)
-                    loss_lan2_sample_lan1_vs_tgt_lan1 = cross_entropy(start_lan2_inter_prob_2d, tgt_start_lan2_inter)
+
+                    loss_lan2_sample_lan1_vs_tgt_lan1 = cross_entropy(start_lan2_inter_prob_2d, lan1_decoder_output)
                     
                     ## decoder prediction
                     start_lan2_output_prob_2d = start_lan2_output_prob.contiguous().view(-1, start_lan2_output_prob.shape[-1])
-                    ## decoder output
-                    tgt_start_lan2_output = lan2_[:, 1:].contiguous().view(-1)
-                    loss_lan2_smaple_lan2_vs_tgt_lan2 = cross_entropy(start_lan2_output_prob_2d, tgt_start_lan2_output)
+
+                    loss_lan2_smaple_lan2_vs_tgt_lan2 = cross_entropy(start_lan2_output_prob_2d, lan2_decoder_output)
                     
                     loss_lan2 = loss_lan2_sample_lan1_vs_tgt_lan1 + loss_lan2_smaple_lan2_vs_tgt_lan2
                     
