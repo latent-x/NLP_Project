@@ -188,7 +188,7 @@ if __name__ == '__main__':
     start = time.time()
     tokenizer.train_from_iterator(
         train_corpus,
-        trainer = trainer
+        trainer = trainer,
     )
     end = time.time()
 

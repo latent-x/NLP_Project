@@ -54,7 +54,8 @@ if __name__ == "__main__":
     # preprocess datasets
     tokenized_ds = raw_datasets.map(
         preprocess,
-        batched = True
+        batched = True,
+        remove_columns = raw_datasets["train"].column_names,
     )
 
     # save preprocessed dataset
