@@ -173,10 +173,10 @@ if __name__ == "__main__":
     dropout_attention = 0.0
     batch_first = True
     n_layers = 6
-    vocab_size = tokenizer.vocab_size
-    pad_idx = tokenizer.token_to_ids('[PAD]')
-    sos_idx = tokenizer.token_to_ids('[SOS]')
-    eos_idx = tokenizer.token_to_ids('[EOS]')
+    vocab_size = tokenizer.get_vocab_size()
+    pad_idx = tokenizer.token_to_id('[PAD]')
+    sos_idx = tokenizer.token_to_id('[SOS]')
+    eos_idx = tokenizer.token_to_id('[EOS]')
 
     # define language1 self attetntion 6ea
     for i in range(1, n_layers + 1):
@@ -393,7 +393,7 @@ if __name__ == "__main__":
             del batch
 
         # Evaluate sacreBleu
-
+        
 
 
 

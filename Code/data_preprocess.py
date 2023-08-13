@@ -33,7 +33,7 @@ def preprocess(examples):
             tok_inputs.append(tok_input)
             tok_targets.append(tok_target)
 
-    model_inputs = {'input_ids':tok_inputs, 'labels':tok_targets}
+    model_inputs = {'en':tok_inputs, 'de':tok_targets}
 
     return model_inputs
 
