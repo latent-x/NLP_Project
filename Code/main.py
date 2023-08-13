@@ -62,7 +62,7 @@ def data_collate_fn(samples):
         else:
             collate_de.append(torch.tensor(sample['de']))
 
-    return {'en': torch.stack(collate_en).type(torch.ShortTensor), 'de': torch.stack(collate_de).type(torch.ShortTensor)}
+    return {'en': torch.stack(collate_en).type(torch.LongTensor), 'de': torch.stack(collate_de).type(torch.LongTensor)}
 
 if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -86,15 +86,17 @@ if __name__ == "__main__":
         'tokenizer_10000': './WMT_16_TOKENIZER/wmt_16_10000.json',
     }
 
-    with open(file_dict['tokenizer_20000'], 'r') as f:
+    with open(file_dict['tokenizer_10000'], 'r') as f:
         tokenizer = Tokenizer.from_str(''.join(f.readlines()))
 
     # load preprocessed datasets
     train_path_prefix = './WMT_16_PREPROCESSED/train/'
-    train_fs = ['data-00000-of-00004.arrow',
-                'data-00001-of-00004.arrow',
-                'data-00002-of-00004.arrow',
-                'data-00003-of-00004.arrow',
+    train_fs = ['data-00000-of-00006.arrow',
+                'data-00001-of-00006.arrow',
+                'data-00002-of-00006.arrow',
+                'data-00003-of-00006.arrow',
+                'data-00004-of-00006.arrow',
+                'data-00005-of-00006.arrow',
                 'state.json',
                 'dataset_info.json']
     
@@ -300,12 +302,14 @@ if __name__ == "__main__":
         tok_datasets["train"],
         shuffle = True,
         batch_size = 64,
+        num_workers=4,
         collate_fn = data_collate_fn,
     )
 
     eval_dataloader = DataLoader(
         tok_datasets["validation"],
         batch_size = 64,
+        num_workers=4,
         collate_fn = data_collate_fn,
     )
 

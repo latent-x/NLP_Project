@@ -27,7 +27,7 @@ def preprocess(examples):
         tok_target.append(eos_id) # ADD EOS TOKEN
         
         # except if sequence length exceed 2000
-        if (len(tok_input) > 2000) | (len(tok_target) > 2000):
+        if (len(tok_input) > 1000) | (len(tok_target) > 1000):
             pass
         else:
             tok_inputs.append(tok_input)
@@ -48,7 +48,7 @@ if __name__ == "__main__":
         'tokenizer_10000': './WMT_16_TOKENIZER/wmt_16_10000.json',
     }
 
-    with open(file_dict['tokenizer_20000'], 'r') as f:
+    with open(file_dict['tokenizer_10000'], 'r') as f:
         tokenizer = Tokenizer.from_str(''.join(f.readlines()))
 
     # preprocess datasets

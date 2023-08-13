@@ -179,7 +179,7 @@ if __name__ == '__main__':
 
     # defining tokenizer
     tokenizer = Tokenizer(BPE(unk_token="[UNK]", continuing_subword_prefix="##"))
-    trainer = BpeTrainer(vocab_size = 20000,
+    trainer = BpeTrainer(vocab_size = 10000,
                         special_tokens=["[UNK]", "[CLS]", "[SEP]", "[PAD]", "[MASK]", "[SOS]", "[EOS]"],
                         continuing_subword_prefix = "##")
     tokenizer.pre_tokenizer = Whitespace()
@@ -199,7 +199,7 @@ if __name__ == '__main__':
     _, _ = tokenizer_spec_test_using_unseen(tokenizer, raw_datasets) # spec on unseen dataset
 
     # save trained tokenizer
-    tokenizer.save('./WMT_16_TOKENIZER/wmt_16_30000.json')
+    tokenizer.save('./WMT_16_TOKENIZER/wmt_16_10000.json')
 
 '''
 How to load saved toknenizer?
