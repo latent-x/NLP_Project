@@ -453,13 +453,13 @@ class ProposedModel(nn.Module):
 
         ## lan2 -> lan1
         '''
-            args: lan2, lan1
-                lan2 - (batch, lan2_seq_len)
+            args: start_lan1_inter_token, lan1
+                start_lan1_inter_token - (batch, lan2_seq_len) -> they are langauge2 sentences
                 lan1 - (batch, lan1_seq_len)
             results:
                 start_lan1_output - (batch, lan1_seq_len, d_model)
         '''
-        start_lan1_output = self.transformer2(lan2, lan1, pad_idx, eos_idx)
+        start_lan1_output = self.transformer2(start_lan1_inter_token, lan1, pad_idx, eos_idx)
 
         ## find probability
         start_lan1_output_prob = self.lan_emb_to_prob(start_lan1_output, self.lan1_linear)
@@ -483,13 +483,13 @@ class ProposedModel(nn.Module):
 
         ## lan1 -> lan2
         '''
-            args: lan1, lan2
-                lan1 - (batch, lan1_seq_len)
+            args: start_lan2_inter_output, lan2
+                start_lan2_inter_output - (batch, lan1_seq_len) -> they are langauge1 sentences
                 lan2 - (batch, lan2_seq_len)   
             results:
                 start_lan2_output - (batch, lan2_seq_len, d_model)
         '''
-        start_lan2_output = self.transformer1(lan1, lan2, pad_idx, eos_idx)
+        start_lan2_output = self.transformer1(start_lan2_inter_token, lan2, pad_idx, eos_idx)
 
         ## find probability
         start_lan2_output_prob = self.lan_emb_to_prob(start_lan2_output, self.lan2_linear)
