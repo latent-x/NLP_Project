@@ -382,9 +382,9 @@ class WrapperForTransformer(nn.Module):
 
     def forward(self, src: Tensor, tgt: Tensor, pad_idx, eos_idx) -> Tensor:
         '''
-            encoder input -> [SOS] t1 t2 t3 ... tm [EOS]
-            decoder input -> [SOS] k1 k2 k3 ... kn 
-            decoder output ->      k1 K2 K3 ... KN [EOS]
+            encoder input -> [SOS] t1 t2 t3 ... tm [EOS] [PAD] [PAD] ...
+            decoder input -> [SOS] k1 k2 k3 ... kn [PAD] [PAD] [PAD] ...
+            decoder output ->k1 K2 K3 ... KN [EOS] [PAD] [PAD] [PAD] ...
         '''        
         # encoder input
         src_ = self.tok_embedding_lan1(src)
@@ -394,7 +394,7 @@ class WrapperForTransformer(nn.Module):
         tgt_clone = tgt.clone().detach()
         tgt_clone[tgt == eos_idx] = pad_idx
 
-        tgt_ = self.tok_embedding_lan2(tgt_clone)
+        tgt_ = self.tok_embedding_lan2(tgt_clone[:, :-1])
         tgt_pos = self.pos_embedding(tgt_)
 
         src_mask, tgt_mask, _, _ = self.create_mask(src_pos, tgt_pos, pad_idx)
@@ -448,8 +448,8 @@ class ProposedModel(nn.Module):
         ## find probability
         start_lan1_inter_prob = self.lan_emb_to_prob(start_lan1_inter_output, self.lan2_linear)
         
-        ## find token
-        start_lan1_inter_token = torch.argmax(start_lan1_inter_prob, dim = 2)
+        # ## find token
+        # start_lan1_inter_token = torch.argmax(start_lan1_inter_prob, dim = 2)
 
         ## lan2 -> lan1
         '''
@@ -478,8 +478,8 @@ class ProposedModel(nn.Module):
         ## find probability
         start_lan2_inter_prob = self.lan_emb_to_prob(start_lan2_inter_output, self.lan1_linear)
 
-        ## find token
-        start_lan2_inter_token = torch.argmax(start_lan2_inter_prob, dim = 2)
+        # ## find token
+        # start_lan2_inter_token = torch.argmax(start_lan2_inter_prob, dim = 2)
 
         ## lan1 -> lan2
         '''

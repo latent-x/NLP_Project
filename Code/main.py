@@ -30,6 +30,7 @@ from datasets import load_dataset
 from datasets import Dataset
 from datasets import concatenate_datasets
 import datasets
+import pickle
 
 from tokenizers import Tokenizer
 from tokenizers.models import BPE
@@ -341,44 +342,51 @@ if __name__ == "__main__":
 
     cross_entropy = nn.CrossEntropyLoss(ignore_index = pad_idx)
 
+    train_loss_history = []
+    valid_loss_history = []
+
     for epoch in range(num_epochs):
         loss = []
+        loss_period = []
+        min_loss = np.inf
         
         # model training
         model.train()
+        cnt = 0
 
         for b in train_dataloader:
-            train_tf = True
-
             batch = {k: v.to(device) for k, v in b.items()}
             
-            lan1_ = batch['en']
-            lan2_ = batch['de']
+            lan1_ = batch['en'] # (batch, lan1_seq_len)
+            lan2_ = batch['de'] # (batch, lan2_seq_len)
 
             start_lan1_inter_prob, start_lan1_output_prob, start_lan2_inter_prob, start_lan2_output_prob\
                     = model(lan1_, lan2_, pad_idx, eos_idx)
 
             # start from lan1
+            ## decoder prediction
             start_lan1_inter_prob_2d = start_lan1_inter_prob.contiguous().view(-1, start_lan1_inter_prob.shape[-1])
-            
-            # tgt_start_lan1_inter == decoder output(label)
-            # decoder output ->      k1 K2 K3 ... KN [EOS]
-            tgt_start_lan1_inter = lan2_.contiguous().view(-1)
+            ## decoder output(label) ->      k1 K2 K3 ... KN [EOS]
+            tgt_start_lan1_inter = lan2_[:, 1:].contiguous().view(-1)
             loss_lan1_sample_lan2_vs_tgt_lan2 = cross_entropy(start_lan1_inter_prob_2d, tgt_start_lan1_inter)
 
+            ## decoder prediction
             start_lan1_output_prob_2d = start_lan1_output_prob.contiguous().view(-1, start_lan1_output_prob.shape[-1])            
-            tgt_start_lan1_output = lan1_.contiguous().view(-1)
+            ## decoder output(label)
+            tgt_start_lan1_output = lan1_[:, 1:].contiguous().view(-1)
             loss_lan1_sample_lan1_vs_tgt_lan1 = cross_entropy(start_lan1_output_prob_2d, tgt_start_lan1_output)
             
             loss_lan1 = loss_lan1_sample_lan2_vs_tgt_lan2 + loss_lan1_sample_lan1_vs_tgt_lan1
 
             # start from lan2
+            ## decoder prediction
             start_lan2_inter_prob_2d = start_lan2_inter_prob.contiguous().view(-1, start_lan2_inter_prob.shape[-1])
-            tgt_start_lan2_inter = lan1_.contiguous().view(-1)
+            # decoder output(label) ->      k1 k2 k3 ... kn [EOS]
+            tgt_start_lan2_inter = lan1_[:, 1:].contiguous().view(-1)
             loss_lan2_sample_lan1_vs_tgt_lan1 = cross_entropy(start_lan2_inter_prob_2d, tgt_start_lan2_inter)
             
             start_lan2_output_prob_2d = start_lan2_output_prob.contiguous().view(-1, start_lan2_output_prob.shape[-1])
-            tgt_start_lan2_output = lan2_.contiguous().view(-1)
+            tgt_start_lan2_output = lan2_[:, 1:].contiguous().view(-1)
             loss_lan2_smaple_lan2_vs_tgt_lan2 = cross_entropy(start_lan2_output_prob_2d, tgt_start_lan2_output)
             
             loss_lan2 = loss_lan2_sample_lan1_vs_tgt_lan1 + loss_lan2_smaple_lan2_vs_tgt_lan2
@@ -393,16 +401,88 @@ if __name__ == "__main__":
             progress_bar.update(1)
 
             loss.append(loss_.item())
+            loss_period.append(loss_.item())
             
             del batch
 
+            if cnt % 100 == 0:
+                # valid loss
+                valid_loss = []
+
+                model.eval()
+
+                for v_b in eval_dataloader:
+                    v_batch = {k: v.to(device) for k, v in v_b.items()}
+
+                    lan1_ = v_batch['en']
+                    lan2_ = v_batch['de']
+
+                    start_lan1_inter_prob, start_lan1_output_prob, start_lan2_inter_prob, start_lan2_output_prob\
+                            = model(lan1_, lan2_, pad_idx, eos_idx)
+
+                    # start from lan1
+                    ## decoder prediction
+                    start_lan1_inter_prob_2d = start_lan1_inter_prob.contiguous().view(-1, start_lan1_inter_prob.shape[-1])
+                    ## decoder output ->      k1 K2 K3 ... KN [EOS]
+                    tgt_start_lan1_inter = lan2_[:, 1:].contiguous().view(-1)
+                    loss_lan1_sample_lan2_vs_tgt_lan2 = cross_entropy(start_lan1_inter_prob_2d, tgt_start_lan1_inter)
+
+                    ## decoder perdiction
+                    start_lan1_output_prob_2d = start_lan1_output_prob.contiguous().view(-1, start_lan1_output_prob.shape[-1])            
+                    ## decoder output
+                    tgt_start_lan1_output = lan1_[:, 1:].contiguous().view(-1)
+                    loss_lan1_sample_lan1_vs_tgt_lan1 = cross_entropy(start_lan1_output_prob_2d, tgt_start_lan1_output)
+                    
+                    loss_lan1 = loss_lan1_sample_lan2_vs_tgt_lan2 + loss_lan1_sample_lan1_vs_tgt_lan1
+
+                    # start from lan2
+                    ## decoder prediction
+                    start_lan2_inter_prob_2d = start_lan2_inter_prob.contiguous().view(-1, start_lan2_inter_prob.shape[-1])
+                    ## decoder output ->       k1 k2 k3  ... kn [EOS]
+                    tgt_start_lan2_inter = lan1_[:, 1:].contiguous().view(-1)
+                    loss_lan2_sample_lan1_vs_tgt_lan1 = cross_entropy(start_lan2_inter_prob_2d, tgt_start_lan2_inter)
+                    
+                    ## decoder prediction
+                    start_lan2_output_prob_2d = start_lan2_output_prob.contiguous().view(-1, start_lan2_output_prob.shape[-1])
+                    ## decoder output
+                    tgt_start_lan2_output = lan2_[:, 1:].contiguous().view(-1)
+                    loss_lan2_smaple_lan2_vs_tgt_lan2 = cross_entropy(start_lan2_output_prob_2d, tgt_start_lan2_output)
+                    
+                    loss_lan2 = loss_lan2_sample_lan1_vs_tgt_lan1 + loss_lan2_smaple_lan2_vs_tgt_lan2
+                    
+                    loss_ = loss_lan1 + loss_lan2
+
+                    valid_loss.append(loss_.item())
+
+                    del v_batch
+
+                # Loss Reporting
+                print("epoch: {}, cnt : {}, train loss: {}, valid loss: {}".format(epoch, cnt, np.mean(loss_period), np.mean(valid_loss)))
+                train_loss_history.append(np.mean(loss_period))
+                valid_loss_history.append(np.mean(valid_loss))
+                
+                if np.mean(valid_loss) < min_loss:
+                    min_loss = np.mean(valid_loss)
+                    torch.save(model, "./model/model_{}_{}_{}_{}.pt".format(epoch, cnt, np.mean(loss_period), np.mean(valid_loss)))
+
+                # get back to training mode
+                model.train()
+
+                # free loss_period
+                loss_period = []
+            
+            cnt += 1
+
         # Evaluate sacreBleu
-        
-
-
-
-        print("epoch: {}, loss: {}".format(epoch, np.mean(loss)))
+        # model.eval()
 
     writer.close()
-    torch.save(model, "test.pt")
-
+    
+    # save
+    torch.save(model, "./model/model_end.pt")
+    
+    with open("train_loss_history.pkl", "wb") as f:
+        pickle.dump(train_loss_history, f)
+    
+    with open("valid_loss_history.pkl", "wb") as f:
+        pickle.dump(valid_loss_history, f)
