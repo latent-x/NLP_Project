@@ -25,6 +25,7 @@ from transformers import AdamW
 from transformers import get_scheduler
 from transformers import DataCollatorForSeq2Seq
 from transformers import AutoTokenizer
+from transformers import get_inverse_sqrt_schedule
 
 from datasets import load_dataset
 from datasets import Dataset
@@ -317,18 +318,24 @@ if __name__ == "__main__":
     #####
     # Part4. Desing Training Loop
     #####
-    optimizer = AdamW(model.parameters(), lr = 5e-5)
+    optimizer = AdamW(model.parameters(), lr = 0.001)
 
     # lr scheduler
     num_epochs = 10
     num_training_steps = num_epochs * len(train_dataloader)
 
-    lr_scheduler = get_scheduler(
-        "linear",
-        optimizer = optimizer,
-        num_warmup_steps=0,
+    lr_scheduler = get_inverse_sqrt_schedule(
+        optimizer=optimizer,
+        num_warmup_steps=4000,
         num_training_steps=num_training_steps
     )
+
+    # lr_scheduler = get_scheduler(
+    #     "linear",
+    #     optimizer = optimizer,
+    #     num_warmup_steps=0,
+    #     num_training_steps=num_training_steps
+    # )
 
     with torch.autograd.detect_anomaly():
         print("before strat training epoch, confirm")
