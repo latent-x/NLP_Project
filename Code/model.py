@@ -371,11 +371,8 @@ class WrapperForTransformer(nn.Module):
         self.device = device
         self.pos_embedding = PositionalEncoding(d_model, dropout_rate, max_len)
 
-        if 'tok_embedding_lan1' in kwargs.keys():
-            self.tok_embedding_lan1 = kwargs['tok_embedding_lan1']
-
-        if 'tok_embedding_lan2' in kwargs.keys():
-            self.tok_embedding_lan2 = kwargs['tok_embedding_lan2']
+        if 'tok_embedding' in kwargs.keys():
+            self.tok_embedding = kwargs['tok_embedding']
 
         if 'transformer' in kwargs.keys():
             self.transformer = kwargs['transformer']
@@ -387,14 +384,14 @@ class WrapperForTransformer(nn.Module):
             decoder output ->k1 K2 K3 ... KN [EOS] [PAD] [PAD] [PAD] ...
         '''        
         # encoder input
-        src_ = self.tok_embedding_lan1(src)
+        src_ = self.tok_embedding(src)
         src_pos = self.pos_embedding(src_)
 
         # decoder input: replace eos token to pad token
         tgt_clone = tgt.clone().detach()
         tgt_clone[tgt == eos_idx] = pad_idx
 
-        tgt_ = self.tok_embedding_lan2(tgt_clone[:, :-1])
+        tgt_ = self.tok_embedding(tgt_clone[:, :-1])
         tgt_pos = self.pos_embedding(tgt_)
 
         src_mask, tgt_mask, _, _ = self.create_mask(src_pos, tgt_pos, pad_idx)
