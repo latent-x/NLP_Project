@@ -175,6 +175,8 @@ if __name__ == "__main__":
     n_layers = 6
     vocab_size = tokenizer.vocab_size
     pad_idx = tokenizer.token_to_ids('[PAD]')
+    sos_idx = tokenizer.token_to_ids('[SOS]')
+    eos_idx = tokenizer.token_to_ids('[EOS]')
 
     # define language1 self attetntion 6ea
     for i in range(1, n_layers + 1):
@@ -330,8 +332,6 @@ if __name__ == "__main__":
     model.to(device)
 
     progress_bar = tqdm(range(num_training_steps))
-    
-    model.train()
 
     writer = SummaryWriter()
 
@@ -341,23 +341,24 @@ if __name__ == "__main__":
         loss = []
         
         # model training
+        model.train()
+
         for b in train_dataloader:
             train_tf = True
 
             batch = {k: v.to(device) for k, v in b.items()}
             
-            lan1 = batch['input_ids']
-            lan2 = batch['labels']
-            lan1_ = lan1.clone().detach()
-            lan1_[lan1 == -100] = pad_idx
-            lan2_ = lan2.clone().detach()
-            lan2_[lan2 == -100] = pad_idx
+            lan1_ = batch['en']
+            lan2_ = batch['de']
 
             start_lan1_inter_prob, start_lan1_output_prob, start_lan2_inter_prob, start_lan2_output_prob\
-                    = model(lan1_, lan2_, pad_idx)
+                    = model(lan1_, lan2_, pad_idx, eos_idx)
 
             # start from lan1
             start_lan1_inter_prob_2d = start_lan1_inter_prob.contiguous().view(-1, start_lan1_inter_prob.shape[-1])
+            
+            # tgt_start_lan1_inter == decoder output(label)
+            # decoder output ->      k1 K2 K3 ... KN [EOS]
             tgt_start_lan1_inter = lan2_.contiguous().view(-1)
             loss_lan1_sample_lan2_vs_tgt_lan2 = cross_entropy(start_lan1_inter_prob_2d, tgt_start_lan1_inter)
 

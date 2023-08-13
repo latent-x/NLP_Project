@@ -380,16 +380,19 @@ class WrapperForTransformer(nn.Module):
         if 'transformer' in kwargs.keys():
             self.transformer = kwargs['transformer']
 
-    def forward(self, src: Tensor, tgt: Tensor, pad_idx) -> Tensor:
-        src_clone = src.clone().detach()
-        src_clone[src == -100] = pad_idx
-
-        src_ = self.tok_embedding_lan1(src_clone)
+    def forward(self, src: Tensor, tgt: Tensor, pad_idx, eos_idx) -> Tensor:
+        '''
+            encoder input -> [SOS] t1 t2 t3 ... tm [EOS]
+            decoder input -> [SOS] k1 k2 k3 ... kn 
+            decoder output ->      k1 K2 K3 ... KN [EOS]
+        '''        
+        # encoder input
+        src_ = self.tok_embedding_lan1(src)
         src_pos = self.pos_embedding(src_)
 
-        # clean up all -100s in the labels
+        # decoder input: replace eos token to pad token
         tgt_clone = tgt.clone().detach()
-        tgt_clone[tgt == -100] = pad_idx
+        tgt_clone[tgt == eos_idx] = pad_idx
 
         tgt_ = self.tok_embedding_lan2(tgt_clone)
         tgt_pos = self.pos_embedding(tgt_)
@@ -430,7 +433,7 @@ class ProposedModel(nn.Module):
         self.lan2_linear = nn.Linear(d_model, vocab_size)
         self.lan1_linear = nn.Linear(d_model, vocab_size)
 
-    def forward(self, lan1, lan2, pad_idx):
+    def forward(self, lan1, lan2, pad_idx, eos_idx):
         # start from lan1
         ## lan1 -> lan2
         '''
@@ -440,7 +443,7 @@ class ProposedModel(nn.Module):
             results:
                 start_lan1_inter_output - (batch, lan2_seq_len, d_model)
         '''
-        start_lan1_inter_output = self.transformer1(lan1, lan2, pad_idx)
+        start_lan1_inter_output = self.transformer1(lan1, lan2, pad_idx, eos_idx)
         
         ## find probability
         start_lan1_inter_prob = self.lan_emb_to_prob(start_lan1_inter_output, self.lan2_linear)
@@ -456,7 +459,7 @@ class ProposedModel(nn.Module):
             results:
                 start_lan1_output - (batch, lan1_seq_len, d_model)
         '''
-        start_lan1_output = self.transformer2(start_lan1_inter_token, lan1, pad_idx)
+        start_lan1_output = self.transformer2(start_lan1_inter_token, lan1, pad_idx, eos_idx)
 
         ## find probability
         start_lan1_output_prob = self.lan_emb_to_prob(start_lan1_output, self.lan1_linear)
@@ -470,7 +473,7 @@ class ProposedModel(nn.Module):
             results:
                 start_lan2_inter_output - (batch, lan1_seq_len, d_model)
         '''
-        start_lan2_inter_output = self.transformer2(lan2, lan1, pad_idx)
+        start_lan2_inter_output = self.transformer2(lan2, lan1, pad_idx, eos_idx)
 
         ## find probability
         start_lan2_inter_prob = self.lan_emb_to_prob(start_lan2_inter_output, self.lan1_linear)
@@ -486,7 +489,7 @@ class ProposedModel(nn.Module):
             results:
                 start_lan2_output - (batch, lan2_seq_len, d_model)
         '''
-        start_lan2_output = self.transformer1(start_lan2_inter_token, lan2, pad_idx)
+        start_lan2_output = self.transformer1(start_lan2_inter_token, lan2, pad_idx, eos_idx)
 
         ## find probability
         start_lan2_output_prob = self.lan_emb_to_prob(start_lan2_output, self.lan2_linear)
