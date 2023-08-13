@@ -24,45 +24,25 @@ from torch.utils.data import DataLoader
 from transformers import AdamW
 from transformers import get_scheduler
 from transformers import DataCollatorForSeq2Seq
-from transformers import AutoTokenizer
-
 from datasets import load_dataset
-from datasets import Dataset
-from datasets import concatenate_datasets
-import datasets
-
-from tokenizers import Tokenizer
-from tokenizers.models import BPE
+from transformers import AutoTokenizer
 
 from torch.utils.tensorboard import SummaryWriter
 
-# define data_collator
-def data_collate_fn(samples):
-    collate_en = []
-    collate_de = []
-    
-    pad_idx = 3 # tokenizer.token_to_id('[PAD]')
-
-    max_len_en = max([len(sample['en']) for sample in samples])
-    max_len_de = max([len(sample['de']) for sample in samples])
-
-    for sample in samples:
-        diff_en = max_len_en - len(sample['en'])
-        diff_de = max_len_de - len(sample['de'])
-
-        if diff_en > 0:
-            pad_tensor_en = torch.ones(size = (diff_en, )) * pad_idx
-            collate_en.append(torch.cat([torch.tensor(sample['en']), pad_tensor_en], dim = 0))
+def preprocess_function_en_fr(examples):
+    inputs = []
+    targets = []
+    for ex in examples["translation"]:
+        if (len(ex["en"]) > 100) | (len(ex["fr"]) > 100):
+            pass
         else:
-            collate_en.append(torch.tensor(sample['en']))
-        
-        if diff_de > 0:
-            pad_tensor_de = torch.ones(size = (diff_de, )) * pad_idx
-            collate_de.append(torch.cat([torch.tensor(sample['de']), pad_tensor_de], dim = 0))
-        else:
-            collate_de.append(torch.tensor(sample['de']))
+            inputs.append(ex["en"])
+            targets.append(ex["fr"])
 
-    return {'en': torch.stack(collate_en).type(torch.ShortTensor), 'de': torch.stack(collate_de).type(torch.ShortTensor)}
+    model_inputs = tokenizer_en_fr(
+        inputs, text_target = targets, max_length = max_length, truncation = True
+    )
+    return model_inputs
 
 if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -77,91 +57,19 @@ if __name__ == "__main__":
 
     # parameters
     max_length = 5000
-    
-    # load trained tokenizer
-    # load tokenizer
-    file_dict = {
-        'tokenizer_30000': './WMT_16_TOKENIZER/wmt_16_30000.json',
-        'tokenizer_20000': './WMT_16_TOKENIZER/wmt_16_20000.json',
-        'tokenizer_10000': './WMT_16_TOKENIZER/wmt_16_10000.json',
-    }
 
-    with open(file_dict['tokenizer_20000'], 'r') as f:
-        tokenizer = Tokenizer.from_str(''.join(f.readlines()))
+    raw_datasets = load_dataset('kde4', lang1 = "en", lang2 = "fr")
 
-    # load preprocessed datasets
-    train_path_prefix = './WMT_16_PREPROCESSED/train/'
-    train_fs = ['data-00000-of-00004.arrow',
-                'data-00001-of-00004.arrow',
-                'data-00002-of-00004.arrow',
-                'data-00003-of-00004.arrow',
-                'state.json',
-                'dataset_info.json']
-    
-    valid_path_prefix = './WMT_16_PREPROCESSED/validation/'
-    valid_fs = ['data-00000-of-00001.arrow', 
-                'state.json', 
-                'dataset_info.json']
-    
-    test_path_prefix = './WMT_16_PREPROCESSED/test/'
-    test_fs = ['data-00000-of-00001.arrow', 
-               'state.json', 
-               'dataset_info.json']
-    
-    ## load train datasets
-    train_datasets = []
+    split_datasets = raw_datasets["train"].train_test_split(train_size = 0.99, seed = 20)
+    split_datasets["validation"] = split_datasets.pop("test")
 
-    for f in train_fs:
-        if f.split('.')[-1] == 'arrow':
-            f_path = train_path_prefix + f
-            
-            temp_ds = Dataset.from_file(f_path)
-            train_datasets.append(temp_ds)
+    tokenizer_en_fr = AutoTokenizer.from_pretrained("huggingface-course/marian-finetuned-kde4-en-to-fr", return_tensors = "pt")
 
-    train_ds = concatenate_datasets(train_datasets)
-
-    ## load valid datasets
-    valid_datasets = []
-
-    for f in valid_fs:
-        if f.split('.')[-1] == 'arrow':
-            f_path = valid_path_prefix + f
-            
-            temp_ds = Dataset.from_file(f_path)
-            valid_datasets.append(temp_ds)
-
-    valid_ds = concatenate_datasets(valid_datasets)
-
-    ## load test datasets
-    test_datasets = []
-
-    for f in test_fs:
-        if f.split('.')[-1] == 'arrow':
-            f_path = test_path_prefix + f
-            
-            temp_ds = Dataset.from_file(f_path)
-            test_datasets.append(temp_ds)
-
-    test_ds = concatenate_datasets(test_datasets)
-
-    # tokenized dataset
-    '''
-    DatasetDict({
-        train: Dataset({
-            features: ['en', 'de'],
-            num_rows: 4548809
-        })
-        validation: Dataset({
-            features: ['en', 'de'],
-            num_rows: 2169
-        })
-        test: Dataset({
-            features: ['en', 'de'],
-            num_rows: 2999
-        })
-    })
-    '''
-    tok_datasets = datasets.DatasetDict({"train":train_ds, "validation": valid_ds,"test":test_ds})
+    tokenized_datasets_en_fr = split_datasets.map(
+        preprocess_function_en_fr,
+        batched = True,
+        remove_columns = split_datasets["train"].column_names,
+    )
 
     #####
     # Part2. Define Model
@@ -173,8 +81,7 @@ if __name__ == "__main__":
     dropout_attention = 0.0
     batch_first = True
     n_layers = 6
-    vocab_size = tokenizer.vocab_size
-    pad_idx = tokenizer.token_to_ids('[PAD]')
+    vocab_size = tokenizer_en_fr.vocab_size
 
     # define language1 self attetntion 6ea
     for i in range(1, n_layers + 1):
@@ -194,14 +101,12 @@ if __name__ == "__main__":
     # define encoderlayer for lan1 -> lan2
     for i in range(1, n_layers + 1):
         kwargs = {'self_attn': globals()['lan1_self_attention' + str(i)]}
-        globals()['lan1_encoder_layer' + str(i)] = ProposedEncoderLayer(d_model = d_model, nhead = nhead, 
-                                                                        device = device, batch_first = batch_first, **kwargs)
+        globals()['lan1_encoder_layer' + str(i)] = ProposedEncoderLayer(d_model = d_model, nhead = nhead, device = device, batch_first = batch_first, **kwargs)
 
     # define encoderlayer for lan2 -> lan1
     for i in range(1, n_layers + 1):
         kwargs = {'self_attn': globals()['lan2_self_attention' + str(i)]}
-        globals()['lan2_encoder_layer' + str(i)] = ProposedEncoderLayer(d_model = d_model, nhead = nhead, 
-                                                                        device = device, batch_first = batch_first, **kwargs)
+        globals()['lan2_encoder_layer' + str(i)] = ProposedEncoderLayer(d_model = d_model, nhead = nhead, device = device, batch_first = batch_first, **kwargs)
 
     # define decoderlayer for lan1 -> lan2
     for i in range(1, n_layers + 1):
@@ -209,8 +114,7 @@ if __name__ == "__main__":
             'self_attn': globals()['lan2_self_attention' + str(i)], 
             'multihead_attn': globals()['lan1_lan2_self_attention' + str(i)]
             }
-        globals()['lan1_decoder_layer' + str(i)] = ProposedDecoderLayer(d_model = d_model, nhead = nhead, 
-                                                                        device = device, batch_first = batch_first, **kwargs)
+        globals()['lan1_decoder_layer' + str(i)] = ProposedDecoderLayer(d_model = d_model, nhead = nhead, device = device, batch_first = batch_first, **kwargs)
         
     # define decoderlayer for lan2 -> lan1
     for i in range(1, n_layers + 1):
@@ -218,8 +122,7 @@ if __name__ == "__main__":
             'self_attn': globals()['lan1_self_attention' + str(i)], 
             'multihead_attn': globals()['lan1_lan2_self_attention' + str(i)]
             }
-        globals()['lan2_decoder_layer' + str(i)] = ProposedDecoderLayer(d_model = d_model, nhead = nhead, 
-                                                                        device = device, batch_first = batch_first, **kwargs)
+        globals()['lan2_decoder_layer' + str(i)] = ProposedDecoderLayer(d_model = d_model, nhead = nhead, device = device, batch_first = batch_first, **kwargs)
         
     # encoder_layers for transformer1
     enc_list_for_trans1 = []
@@ -273,38 +176,38 @@ if __name__ == "__main__":
                                                 custom_decoder=customized_decoder_for_trans2,
                                                 batch_first=batch_first)
 
-    tok_embedding = nn.Embedding(vocab_size, d_model, 
-                                      padding_idx=pad_idx)
+    tok_embedding_lan1 = nn.Embedding(tokenizer_en_fr.vocab_size, d_model, padding_idx=tokenizer_en_fr.pad_token_id)
+    tok_embedding_lan2 = nn.Embedding(tokenizer_en_fr.vocab_size, d_model, padding_idx=tokenizer_en_fr.pad_token_id)
 
     
-    kwargs_transformer1 = {'tok_embedding_lan1': tok_embedding,
-                            'tok_embedding_lan2': tok_embedding,
+    kwargs_transformer1 = {'tok_embedding_lan1': tok_embedding_lan1,
+                            'tok_embedding_lan2': tok_embedding_lan2,
                             'transformer': customized_transformer1}
-    wrap_transformer1 =  WrapperForTransformer(d_model = d_model, dropout_rate = 0.1, 
-                                               max_len = max_length, device= device,**kwargs_transformer1)
+    wrap_transformer1 =  WrapperForTransformer(d_model = d_model, dropout_rate = 0.1, max_len = max_length, device= device,**kwargs_transformer1)
 
-    kwargs_transformer2 = {'tok_embedding_lan1': tok_embedding,
-                            'tok_embedding_lan2': tok_embedding,
+    kwargs_transformer2 = {'tok_embedding_lan1': tok_embedding_lan2,
+                            'tok_embedding_lan2': tok_embedding_lan1,
                             'transformer': customized_transformer2}
-    wrap_transformer2 =  WrapperForTransformer(d_model = d_model, dropout_rate = 0.1, 
-                                               max_len = max_length, device = device, **kwargs_transformer1)
+    wrap_transformer2 =  WrapperForTransformer(d_model = d_model, dropout_rate = 0.1, max_len = max_length, device = device, **kwargs_transformer1)
 
     model = ProposedModel(wrap_transformer1, wrap_transformer2, d_model, vocab_size)
 
     #####
     # Part3. Define DataLoader
     #####
-    train_dataloader = DataLoader(
-        tok_datasets["train"],
+    data_collator_en_fr = DataCollatorForSeq2Seq(tokenizer_en_fr, model = model, padding = True)
+
+    train_dataloader_en_fr = DataLoader(
+        tokenized_datasets_en_fr["train"],
         shuffle = True,
         batch_size = 64,
-        collate_fn = data_collate_fn,
+        collate_fn = data_collator_en_fr,
     )
 
-    eval_dataloader = DataLoader(
-        tok_datasets["validation"],
+    eval_dataloader_en_fr = DataLoader(
+        tokenized_datasets_en_fr["validation"],
         batch_size = 64,
-        collate_fn = data_collate_fn,
+        collate_fn = data_collator_en_fr,
     )
 
     #####
@@ -314,7 +217,7 @@ if __name__ == "__main__":
 
     # lr scheduler
     num_epochs = 10
-    num_training_steps = num_epochs * len(train_dataloader)
+    num_training_steps = num_epochs * len(train_dataloader_en_fr)
 
     lr_scheduler = get_scheduler(
         "linear",
@@ -335,13 +238,11 @@ if __name__ == "__main__":
 
     writer = SummaryWriter()
 
-    cross_entropy = nn.CrossEntropyLoss(ignore_index = pad_idx)
+    cross_entropy = nn.CrossEntropyLoss(ignore_index = tokenizer_en_fr.pad_token_id)
 
     for epoch in range(num_epochs):
         loss = []
-        
-        # model training
-        for b in train_dataloader:
+        for b in train_dataloader_en_fr:
             train_tf = True
 
             batch = {k: v.to(device) for k, v in b.items()}
@@ -349,12 +250,12 @@ if __name__ == "__main__":
             lan1 = batch['input_ids']
             lan2 = batch['labels']
             lan1_ = lan1.clone().detach()
-            lan1_[lan1 == -100] = pad_idx
+            lan1_[lan1 == -100] = tokenizer_en_fr.pad_token_id
             lan2_ = lan2.clone().detach()
-            lan2_[lan2 == -100] = pad_idx
+            lan2_[lan2 == -100] = tokenizer_en_fr.pad_token_id
 
             start_lan1_inter_prob, start_lan1_output_prob, start_lan2_inter_prob, start_lan2_output_prob\
-                    = model(lan1_, lan2_, pad_idx)
+                    = model(lan1_, lan2_, tokenizer_en_fr.pad_token_id)
 
             # start from lan1
             start_lan1_inter_prob_2d = start_lan1_inter_prob.contiguous().view(-1, start_lan1_inter_prob.shape[-1])
@@ -390,11 +291,6 @@ if __name__ == "__main__":
             loss.append(loss_.item())
             
             del batch
-
-        # Evaluate sacreBleu
-
-
-
 
         print("epoch: {}, loss: {}".format(epoch, np.mean(loss)))
 

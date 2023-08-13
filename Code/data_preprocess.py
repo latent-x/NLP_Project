@@ -20,13 +20,18 @@ def preprocess(examples):
         tok_input = tokenizer.encode(example['en']).ids
         tok_input.insert(0, sos_id) # ADD SOS TOKEN
         tok_input.append(eos_id) # ADD EOS TOKEN
-        tok_inputs.append(tok_input)
+        
 
-    for exmaple in examples['translation']:
         tok_target = tokenizer.encode(example['de']).ids
         tok_target.insert(0, sos_id) # ADD SOS TOKEN
         tok_target.append(eos_id) # ADD EOS TOKEN
-        tok_targets.append(tok_target)
+        
+        # except if sequence length exceed 2000
+        if (len(tok_input) > 2000) | (len(tok_target) > 2000):
+            pass
+        else:
+            tok_inputs.append(tok_input)
+            tok_targets.append(tok_target)
 
     model_inputs = {'input_ids':tok_inputs, 'labels':tok_targets}
 
