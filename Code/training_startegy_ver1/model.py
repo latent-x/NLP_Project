@@ -394,9 +394,10 @@ class WrapperForTransformer(nn.Module):
         tgt_ = self.tok_embedding(tgt_clone[:, :-1])
         tgt_pos = self.pos_embedding(tgt_)
 
-        src_mask, tgt_mask, _, _ = self.create_mask(src_pos, tgt_pos, pad_idx)
+        src_mask, tgt_mask, src_padding_mask, tgt_padding_mask = self.create_mask(src_pos, tgt_pos, pad_idx)
 
-        output = self.transformer(src = src_pos, tgt = tgt_pos, src_mask = src_mask, tgt_mask = tgt_mask)
+        output = self.transformer(src = src_pos, tgt = tgt_pos, src_mask = src_mask, tgt_mask = tgt_mask, 
+                                  src_padding_mask = src_padding_mask, tgt_padding_mask= tgt_padding_mask)
 
         return output
 
@@ -485,16 +486,3 @@ class ProposedModel(nn.Module):
             output_prob = self.lan2_linear(output)
 
         return output_prob
-
-    def lan_emb_to_prob(self, lan_output, linear_layer):
-        '''
-            args: lan_output, linear_layer
-                lan_output - (batch, lan_seq_len, d_model)
-                linear_layer - nn.Linear(d_model, vocab_size)
-            results:
-                lan_output_prob - (batch, lan_seq_len, vocab_size)
-        '''
-        lan_output_vocabsize = linear_layer(lan_output)
-        lan_output_prob = nn.functional.softmax(lan_output_vocabsize, dim = 2)
-
-        return lan_output_prob
