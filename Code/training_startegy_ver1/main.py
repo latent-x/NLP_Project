@@ -314,7 +314,7 @@ if __name__ == "__main__":
     )
 
     #####
-    # Part4. Desing Training Loop
+    # Part4. Design Training Loop
     #####
     optimizer = torch.optim.Adam(model.parameters(), lr = 0.001, betas = (0.9, 0.98))
 
@@ -325,7 +325,6 @@ if __name__ == "__main__":
     lr_scheduler = get_inverse_sqrt_schedule(
         optimizer=optimizer,
         num_warmup_steps=4000,
-        
     )
 
     # lr_scheduler = get_scheduler(
@@ -368,49 +367,54 @@ if __name__ == "__main__":
             lan1_decoder_output = lan1_[:, 1:].contiguous().view(-1)
             lan2_decoder_output = lan2_[:, 1:].contiguous().view(-1)
 
-            start_lan1_inter_prob, start_lan1_output_prob, start_lan2_inter_prob, start_lan2_output_prob\
-                    = model(lan1_, lan2_, pad_idx, eos_idx)
+            ########
+            # start from language 1.
+            ########
 
-            # start from lan1
-            ## decoder prediction
-            start_lan1_inter_prob_2d = start_lan1_inter_prob.contiguous().view(-1, start_lan1_inter_prob.shape[-1])
+            # act1. lan1 -> lan2 (loop_cond = 'start1_from_lan1_to_lan2')
+            s1_lan1_lan2 = model(lan1_, lan2_, pad_idx, eos_idx, 'start1_from_lan1_to_lan2')
+            s1_lan1_lan2_loss = cross_entropy(s1_lan1_lan2, lan2_decoder_output)
 
-            loss_lan1_sample_lan2_vs_tgt_lan2 = cross_entropy(start_lan1_inter_prob_2d, lan2_decoder_output)
-
-            ## decoder prediction
-            start_lan1_output_prob_2d = start_lan1_output_prob.contiguous().view(-1, start_lan1_output_prob.shape[-1])            
-
-            loss_lan1_sample_lan1_vs_tgt_lan1 = cross_entropy(start_lan1_output_prob_2d, lan1_decoder_output)
-            
-            ### loss sum
-            loss_lan1 = loss_lan1_sample_lan2_vs_tgt_lan2 + loss_lan1_sample_lan1_vs_tgt_lan1
-
-            # start from lan2
-            ## decoder prediction
-            start_lan2_inter_prob_2d = start_lan2_inter_prob.contiguous().view(-1, start_lan2_inter_prob.shape[-1])
-
-            loss_lan2_sample_lan1_vs_tgt_lan1 = cross_entropy(start_lan2_inter_prob_2d, lan1_decoder_output)
-            
-            ## decoder prediction
-            start_lan2_output_prob_2d = start_lan2_output_prob.contiguous().view(-1, start_lan2_output_prob.shape[-1])
-
-            loss_lan2_smaple_lan2_vs_tgt_lan2 = cross_entropy(start_lan2_output_prob_2d, lan2_decoder_output)
-            
-            loss_lan2 = loss_lan2_sample_lan1_vs_tgt_lan1 + loss_lan2_smaple_lan2_vs_tgt_lan2
-            
-            loss_lan2.backward()
-
-            loss_ = loss_lan1 + loss_lan2
-
-            loss_.backward()
-
+            s1_lan1_lan2_loss.backward()
             optimizer.step()
-            lr_scheduler.step()
             optimizer.zero_grad()
+
+            # act2. lan2 -> lan1 (loop_cond = 'start1_from_lan2_to_lan1')
+            s1_lan2_lan1 = model(lan2_, lan1_, pad_idx, eos_idx, 'start1_from_lan2_to_lan1')
+            s1_lan2_lan1_loss = cross_entropy(s1_lan2_lan1, lan1_decoder_output)
+
+            s1_lan2_lan1_loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()
+
+            ########
+            # start from language 2.
+            ########
+
+            # act1. lan2 -> lan1 (loop_cond = 'strat2_from_lan2_to_lan1')
+            s2_lan2_lan1 = model(lan2_, lan1_, pad_idx, eos_idx, 'strat2_from_lan2_to_lan1')
+            s2_lan2_lan1_loss = cross_entropy(s2_lan2_lan1, lan1_decoder_output)
+
+            s2_lan2_lan1_loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()
+
+            # act2. lan1 -> lan2 (loop_cond = 'start_2_from_lan1_to_lan2')
+            s2_lan1_lan2 = model(lan1_, lan2_, pad_idx, eos_idx, 'start_2_from_lan1_to_lan2')
+            s2_lan1_lan2_loss = cross_entropy(s2_lan1_lan2, lan2_decoder_output)
+
+            s2_lan1_lan2_loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()
+
+            lr_scheduler.step()
+
             progress_bar.update(1)
 
-            loss.append(loss_.item())
-            loss_period.append(loss_.item())
+            loss_mean = (s1_lan1_lan2_loss.item() + s1_lan2_lan1_loss.item() + s2_lan2_lan1_loss.item() + s2_lan1_lan2_loss.item()) / 4
+
+            loss.append(loss_mean)
+            loss_period.append(loss_mean)
             
             del batch
 
@@ -429,38 +433,54 @@ if __name__ == "__main__":
                     lan1_decoder_output = lan1_[:, 1:].contiguous().view(-1)
                     lan2_decoder_output = lan2_[:, 1:].contiguous().view(-1)
 
-                    start_lan1_inter_prob, start_lan1_output_prob, start_lan2_inter_prob, start_lan2_output_prob\
-                            = model(lan1_, lan2_, pad_idx, eos_idx)
+                    ########
+                    # start from language 1.
+                    ########
 
-                    # start from lan1
-                    ## decoder prediction
-                    start_lan1_inter_prob_2d = start_lan1_inter_prob.contiguous().view(-1, start_lan1_inter_prob.shape[-1])
-                    
-                    loss_lan1_sample_lan2_vs_tgt_lan2 = cross_entropy(start_lan1_inter_prob_2d, lan2_decoder_output)
+                    # act1. lan1 -> lan2 (loop_cond = 'start1_from_lan1_to_lan2')
+                    s1_lan1_lan2 = model(lan1_, lan2_, pad_idx, eos_idx, 'start1_from_lan1_to_lan2')
+                    s1_lan1_lan2_loss = cross_entropy(s1_lan1_lan2, lan2_decoder_output)
 
-                    ## decoder perdiction
-                    start_lan1_output_prob_2d = start_lan1_output_prob.contiguous().view(-1, start_lan1_output_prob.shape[-1])            
+                    s1_lan1_lan2_loss.backward()
+                    optimizer.step()
+                    optimizer.zero_grad()
 
-                    loss_lan1_sample_lan1_vs_tgt_lan1 = cross_entropy(start_lan1_output_prob_2d, lan1_decoder_output)
-                    
-                    loss_lan1 = loss_lan1_sample_lan2_vs_tgt_lan2 + loss_lan1_sample_lan1_vs_tgt_lan1
+                    # act2. lan2 -> lan1 (loop_cond = 'start1_from_lan2_to_lan1')
+                    s1_lan2_lan1 = model(lan2_, lan1_, pad_idx, eos_idx, 'start1_from_lan2_to_lan1')
+                    s1_lan2_lan1_loss = cross_entropy(s1_lan2_lan1, lan1_decoder_output)
 
-                    # start from lan2
-                    ## decoder prediction
-                    start_lan2_inter_prob_2d = start_lan2_inter_prob.contiguous().view(-1, start_lan2_inter_prob.shape[-1])
+                    s1_lan2_lan1_loss.backward()
+                    optimizer.step()
+                    optimizer.zero_grad()
 
-                    loss_lan2_sample_lan1_vs_tgt_lan1 = cross_entropy(start_lan2_inter_prob_2d, lan1_decoder_output)
-                    
-                    ## decoder prediction
-                    start_lan2_output_prob_2d = start_lan2_output_prob.contiguous().view(-1, start_lan2_output_prob.shape[-1])
+                    ########
+                    # start from language 2.
+                    ########
 
-                    loss_lan2_smaple_lan2_vs_tgt_lan2 = cross_entropy(start_lan2_output_prob_2d, lan2_decoder_output)
-                    
-                    loss_lan2 = loss_lan2_sample_lan1_vs_tgt_lan1 + loss_lan2_smaple_lan2_vs_tgt_lan2
-                    
-                    loss_ = loss_lan1 + loss_lan2
+                    # act1. lan2 -> lan1 (loop_cond = 'strat2_from_lan2_to_lan1')
+                    s2_lan2_lan1 = model(lan2_, lan1_, pad_idx, eos_idx, 'strat2_from_lan2_to_lan1')
+                    s2_lan2_lan1_loss = cross_entropy(s2_lan2_lan1, lan1_decoder_output)
 
-                    valid_loss.append(loss_.item())
+                    s2_lan2_lan1_loss.backward()
+                    optimizer.step()
+                    optimizer.zero_grad()
+
+                    # act2. lan1 -> lan2 (loop_cond = 'start_2_from_lan1_to_lan2')
+                    s2_lan1_lan2 = model(lan1_, lan2_, pad_idx, eos_idx, 'start_2_from_lan1_to_lan2')
+                    s2_lan1_lan2_loss = cross_entropy(s2_lan1_lan2, lan2_decoder_output)
+
+                    s2_lan1_lan2_loss.backward()
+                    optimizer.step()
+                    optimizer.zero_grad()
+
+                    lr_scheduler.step()
+
+                    progress_bar.update(1)
+
+                    loss_mean = (s1_lan1_lan2_loss.item() + s1_lan2_lan1_loss.item() + s2_lan2_lan1_loss.item() + s2_lan1_lan2_loss.item()) / 4
+
+                    loss.append(loss_mean)
+                    valid_loss.append(loss_mean)
 
                     del v_batch
 
@@ -478,19 +498,18 @@ if __name__ == "__main__":
 
                 # free loss_period
                 loss_period = []
+
+                # save history
+                with open("train_loss_history.pkl", "wb") as f:
+                    pickle.dump(train_loss_history, f)
+                
+                with open("valid_loss_history.pkl", "wb") as f:
+                    pickle.dump(valid_loss_history, f)
+
             
             cnt += 1
-
-        # Evaluate sacreBleu
-        # model.eval()
 
     writer.close()
     
     # save
     torch.save(model, "./model/model_end.pt")
-    
-    with open("train_loss_history.pkl", "wb") as f:
-        pickle.dump(train_loss_history, f)
-    
-    with open("valid_loss_history.pkl", "wb") as f:
-        pickle.dump(valid_loss_history, f)
