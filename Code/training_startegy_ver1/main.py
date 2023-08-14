@@ -93,14 +93,11 @@ if __name__ == "__main__":
 
     # load preprocessed datasets
     train_path_prefix = './WMT_16_PREPROCESSED/train/'
-    train_fs = ['data-00000-of-00006.arrow',
-                'data-00001-of-00006.arrow',
-                'data-00002-of-00006.arrow',
-                'data-00003-of-00006.arrow',
-                'data-00004-of-00006.arrow',
-                'data-00005-of-00006.arrow',
-                'state.json',
-                'dataset_info.json']
+    
+    cur_dir = os.getcwd()
+    os.chdir(train_path_prefix)
+    train_fs = os.listdir()
+    os.chdir(cur_dir)
     
     valid_path_prefix = './WMT_16_PREPROCESSED/validation/'
     valid_fs = ['data-00000-of-00001.arrow', 
@@ -373,7 +370,8 @@ if __name__ == "__main__":
 
             # act1. lan1 -> lan2 (loop_cond = 'start1_from_lan1_to_lan2')
             s1_lan1_lan2 = model(lan1_, lan2_, pad_idx, eos_idx, 'start1_from_lan1_to_lan2')
-            s1_lan1_lan2_loss = cross_entropy(s1_lan1_lan2, lan2_decoder_output)
+            s1_lan1_lan2_1d = s1_lan1_lan2.contiguous().view(-1, s1_lan1_lan2.shape[-1])
+            s1_lan1_lan2_loss = cross_entropy(s1_lan1_lan2_1d, lan2_decoder_output)
 
             s1_lan1_lan2_loss.backward()
             optimizer.step()
@@ -381,7 +379,8 @@ if __name__ == "__main__":
 
             # act2. lan2 -> lan1 (loop_cond = 'start1_from_lan2_to_lan1')
             s1_lan2_lan1 = model(lan2_, lan1_, pad_idx, eos_idx, 'start1_from_lan2_to_lan1')
-            s1_lan2_lan1_loss = cross_entropy(s1_lan2_lan1, lan1_decoder_output)
+            s1_lan2_lan1_1d = s1_lan2_lan1.contiguous().view(-1, s1_lan2_lan1.shape[-1])
+            s1_lan2_lan1_loss = cross_entropy(s1_lan2_lan1_1d, lan1_decoder_output)
 
             s1_lan2_lan1_loss.backward()
             optimizer.step()
@@ -393,7 +392,8 @@ if __name__ == "__main__":
 
             # act1. lan2 -> lan1 (loop_cond = 'strat2_from_lan2_to_lan1')
             s2_lan2_lan1 = model(lan2_, lan1_, pad_idx, eos_idx, 'strat2_from_lan2_to_lan1')
-            s2_lan2_lan1_loss = cross_entropy(s2_lan2_lan1, lan1_decoder_output)
+            s2_lan2_lan1_1d = s2_lan2_lan1.contiguous().view(-1, s2_lan2_lan1.shape[-1])
+            s2_lan2_lan1_loss = cross_entropy(s2_lan2_lan1_1d, lan1_decoder_output)
 
             s2_lan2_lan1_loss.backward()
             optimizer.step()
@@ -401,7 +401,8 @@ if __name__ == "__main__":
 
             # act2. lan1 -> lan2 (loop_cond = 'start_2_from_lan1_to_lan2')
             s2_lan1_lan2 = model(lan1_, lan2_, pad_idx, eos_idx, 'start_2_from_lan1_to_lan2')
-            s2_lan1_lan2_loss = cross_entropy(s2_lan1_lan2, lan2_decoder_output)
+            s2_lan1_lan2_1d = s2_lan1_lan2.contiguous().view(-1, s2_lan1_lan2.shape[-1])
+            s2_lan1_lan2_loss = cross_entropy(s2_lan1_lan2_1d, lan2_decoder_output)
 
             s2_lan1_lan2_loss.backward()
             optimizer.step()
