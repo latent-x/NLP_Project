@@ -440,11 +440,13 @@ if __name__ == "__main__":
 
                     # act1. lan1 -> lan2 (loop_cond = 'start1_from_lan1_to_lan2')
                     s1_lan1_lan2 = model(lan1_, lan2_, pad_idx, eos_idx, 'start1_from_lan1_to_lan2')
-                    s1_lan1_lan2_loss = cross_entropy(s1_lan1_lan2, lan2_decoder_output)
+                    s1_lan1_lan2_1d = s1_lan1_lan2.contiguous().view(-1, vocab_size)
+                    s1_lan1_lan2_loss = cross_entropy(s1_lan1_lan2_1d, lan2_decoder_output)
 
                     # act2. lan2 -> lan1 (loop_cond = 'start1_from_lan2_to_lan1')
                     s1_lan2_lan1 = model(lan1_, lan2_, pad_idx, eos_idx, 'start1_from_lan2_to_lan1')
-                    s1_lan2_lan1_loss = cross_entropy(s1_lan2_lan1, lan1_decoder_output)
+                    s1_lan2_lan1_1d = s1_lan2_lan1.contiguous().view(-1, vocab_size)
+                    s1_lan2_lan1_loss = cross_entropy(s1_lan2_lan1_1d, lan1_decoder_output)
 
                     ########
                     # start from language 2.
@@ -452,11 +454,13 @@ if __name__ == "__main__":
 
                     # act1. lan2 -> lan1 (loop_cond = 'strat2_from_lan2_to_lan1')
                     s2_lan2_lan1 = model(lan1_, lan2_, pad_idx, eos_idx, 'strat2_from_lan2_to_lan1')
-                    s2_lan2_lan1_loss = cross_entropy(s2_lan2_lan1, lan1_decoder_output)
+                    s2_lan2_lan1_1d = s2_lan2_lan1.contiguous().view(-1, vocab_size)
+                    s2_lan2_lan1_loss = cross_entropy(s2_lan2_lan1_1d, lan1_decoder_output)
 
                     # act2. lan1 -> lan2 (loop_cond = 'start_2_from_lan1_to_lan2')
                     s2_lan1_lan2 = model(lan1_, lan2_, pad_idx, eos_idx, 'start_2_from_lan1_to_lan2')
-                    s2_lan1_lan2_loss = cross_entropy(s2_lan1_lan2, lan2_decoder_output)
+                    s2_lan1_lan2_1d = s2_lan1_lan2.contiguous().view(-1, vocab_size)
+                    s2_lan1_lan2_loss = cross_entropy(s2_lan1_lan2_1d, lan2_decoder_output)
 
                     loss_mean = (s1_lan1_lan2_loss.item() + s1_lan2_lan1_loss.item() + s2_lan2_lan1_loss.item() + s2_lan1_lan2_loss.item()) / 4
 
