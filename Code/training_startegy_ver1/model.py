@@ -369,6 +369,7 @@ class WrapperForTransformer(nn.Module):
     def __init__(self, d_model, dropout_rate, max_len, device, **kwargs):
         super().__init__()
         self.device = device
+        self.d_model = d_model
         self.pos_embedding = PositionalEncoding(d_model, dropout_rate, max_len)
 
         if 'tok_embedding' in kwargs.keys():
@@ -384,20 +385,20 @@ class WrapperForTransformer(nn.Module):
             decoder output ->k1 K2 K3 ... KN [EOS] [PAD] [PAD] [PAD] ...
         '''        
         # encoder input
-        src_ = self.tok_embedding(src)
+        src_ = self.tok_embedding(src) * math.sqrt(self.d_model)
         src_pos = self.pos_embedding(src_)
 
         # decoder input: replace eos token to pad token
         tgt_clone = tgt.clone().detach()
         tgt_clone[tgt == eos_idx] = pad_idx
 
-        tgt_ = self.tok_embedding(tgt_clone[:, :-1])
+        tgt_ = self.tok_embedding(tgt_clone[:, :-1]) * math.sqrt(self.d_model)
         tgt_pos = self.pos_embedding(tgt_)
 
         src_mask, tgt_mask, src_padding_mask, tgt_padding_mask = self.create_mask(src_pos, tgt_pos, pad_idx)
 
         output = self.transformer(src = src_pos, tgt = tgt_pos, src_mask = src_mask, tgt_mask = tgt_mask, 
-                                  src_padding_mask = src_padding_mask, tgt_padding_mask= tgt_padding_mask)
+                                  src_key_padding_mask = src_padding_mask, tgt_key_padding_mask= tgt_padding_mask)
 
         return output
 
