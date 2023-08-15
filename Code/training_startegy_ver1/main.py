@@ -31,7 +31,9 @@ from datasets import load_dataset
 from datasets import Dataset
 from datasets import concatenate_datasets
 import datasets
+
 import pickle
+import random
 
 from tokenizers import Tokenizer
 from tokenizers.models import BPE
@@ -67,6 +69,8 @@ def data_collate_fn(samples):
     return {'en': torch.stack(collate_en).type(torch.LongTensor), 'de': torch.stack(collate_de).type(torch.LongTensor)}
 
 if __name__ == "__main__":
+    random.seed(0)
+    
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
@@ -313,7 +317,7 @@ if __name__ == "__main__":
     #####
     # Part4. Design Training Loop
     #####
-    optimizer = torch.optim.Adam(model.parameters(), lr = 0.001, betas = (0.9, 0.98))
+    optimizer = torch.optim.Adam(model.parameters(), lr = 0.0001, betas = (0.9, 0.98))
 
     # lr scheduler
     num_epochs = 10
@@ -476,7 +480,7 @@ if __name__ == "__main__":
                 
                 if np.mean(valid_loss) < min_loss:
                     min_loss = np.mean(valid_loss)
-                    torch.save(model, "./model/model_{}_{}_{}_{}.pt".format(epoch, cnt, np.mean(loss_period), np.mean(valid_loss)))
+                    torch.save(model.state_dict(), "./model/model_{}_{}_{}_{}.pt".format(epoch, cnt, np.mean(loss_period), np.mean(valid_loss)))
 
                 # get back to training mode
                 model.train()
@@ -497,4 +501,4 @@ if __name__ == "__main__":
     writer.close()
     
     # save
-    torch.save(model, "./model/model_end.pt")
+    torch.save(model.state_dict(), "./model/model_end.pt")
