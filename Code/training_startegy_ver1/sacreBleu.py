@@ -18,6 +18,7 @@ import torch.nn as nn
 import numpy as np
 import math
 import os
+from tqdm import tqdm
 
 from torch.utils.data import DataLoader
 
@@ -43,11 +44,13 @@ def preprocess(examples):
         tok_input = tokenizer.encode(example['en']).ids
         tok_input.insert(0, sos_id) # ADD SOS TOKEN
         tok_input.append(eos_id) # ADD EOS TOKEN
-        
 
         tok_target = tokenizer.encode(example['de']).ids
         tok_target.insert(0, sos_id) # ADD SOS TOKEN
         tok_target.append(eos_id) # ADD EOS TOKEN
+
+        tok_inputs.append(tok_input)
+        tok_targets.append(tok_target)
 
     model_inputs = {'en':tok_inputs, 'de':tok_targets}
 
@@ -55,48 +58,73 @@ def preprocess(examples):
 
 def reconstruct_sentence(input_en, input_de, max_token_len = 500):
     # decoder prediction - [SOS] t1 t2 t3 ...
-    output_en = torch.tensor(sos_idx).view(1, 1)
-    output_de = torch.tensor(sos_idx).view(1, 1)
+    output_en = torch.tensor([sos_idx, eos_idx]).view(1, 2)
+    output_de = torch.tensor([sos_idx, eos_idx]).view(1, 2)
     
     output_en = output_en.to(device)
     output_de = output_de.to(device)
 
-    print(output_de)
-    print(output_de.shape)
     # construct en -> de prediction
     ## mode: 'start1_from_lan1_to_lan2'
     for i in range(max_token_len):
         # predictions - (1, seq_len, vocab_size)
-        if input_en.get_device() == output_de.get_device():
-            print("oo")
         predictions = model(input_en, output_de, pad_idx, eos_idx, 'start1_from_lan1_to_lan2')
         # just extract the last token id
-        prediction_id = torch.argmax(predictions, 2)[1, -1]
+        prediction_id = torch.argmax(predictions, 2)[:, -1]
+
 
         # if prediction_id == [EOS], prediction end
         if prediction_id.item() == eos_idx:
             break
         
         prediction_id_2d = prediction_id.view(1, 1).to(device)
-        output_de = torch.cat([output_de, prediction_id_2d], dim = 1)
+        
+        output_de = torch.cat([output_de[:, :-1], prediction_id_2d, output_de[:, -1].view(1, 1)], dim = 1)
 
     # construct de -> en prediction
     ## mode: 'start2_from_lan2_to_lan1'
     for i in range(max_token_len):
         # predictions - (1, seq_len, vocab_size)
-        predictions = model(output_en, input_de, pad_idx, eos_idx, 'start2_from_lan2_to_lan1')
+        predictions = model(output_en, input_de, pad_idx, eos_idx, 'strat2_from_lan2_to_lan1')
+
         # just extract the last token id
-        prediction_id = torch.argmax(predictions, 2)[1, -1]
+        prediction_id = torch.argmax(predictions, 2)[:, -1]
 
         # if prediction_id == [EOS], prediction end
         if prediction_id.item() == eos_idx:
             break
         
-        prediction_id_2d = prediction_id.view(1, 1)
-        output_en = torch.cat([output_en, prediction_id_2d], dim = 1)
+        prediction_id_2d = prediction_id.view(1, 1).to(device)
+
+        output_en = torch.cat([output_en[:, :-1], prediction_id_2d, output_en[:, -1].view(1, 1)], dim = 1)
 
     return output_en, output_de
 
+
+def get_sacrebleu_score(en_pred, en_target, de_pred, de_target):
+    metric = evaluate.load('sacrebleu') #spec metric: sacrebleu
+
+    en_pred_sen = []
+    en_target_sen = []
+
+    de_pred_sen = []
+    de_target_sen = []
+    
+    for idx in range(len(en_pred)):
+        en_pred_decode = tokenizer.decode(en_pred[idx], skip_special_tokens=True).replace(' ##', '')
+        en_target_decode = tokenizer.decode(en_target[idx], skip_special_tokens=True).replace(' ##', '')
+
+        de_pred_decode = tokenizer.decode(de_pred[idx], skip_special_tokens=True).replace(' ##', '')
+        de_target_decode = tokenizer.decode(de_target[idx], skip_special_tokens=True).replace(' ##', '')
+
+    en_metric = metric.compute(predictions = en_pred_sen, references = en_target_sen)
+    de_metric = metric.compute(predictions = de_pred_sen, references = de_target_sen)
+
+    print("*"*10)
+    print("english sacrebleu scores: {}".format(en_metric))
+    print("german sacrebleu scores: {}".format(de_metric))
+
+    return en_metric, de_metric
 
 if __name__ == "__main__":
     os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
@@ -260,6 +288,8 @@ if __name__ == "__main__":
 
     # load model
     model.load_state_dict(model_data)
+    model.eval()
+    model.to(device)
 
     # define dataloader
     eval_dataloader = DataLoader(
@@ -272,7 +302,13 @@ if __name__ == "__main__":
     eos_idx = tokenizer.token_to_id('[EOS]')
     pad_idx = tokenizer.token_to_id('[PAD]')
 
-    for b in eval_dataloader:
+    en_pred = []
+    en_target = []
+
+    de_pred = []
+    de_target = []
+
+    for b in tqdm(eval_dataloader):
         batch = {k: torch.tensor(v).view(1, len(v)).to(device) for k, v in b.items()}
         
         en = batch['en'] #(1, english_seq_len)
@@ -283,8 +319,15 @@ if __name__ == "__main__":
 
         en_decoder_pred, de_decoder_pred = reconstruct_sentence(en, de, max_token_len = 500)
 
+        # en inform
+        en_pred.append(en_decoder_pred.tolist()[0])
+        en_target.append(en.tolist()[0])
+
+        # de inform
+        de_pred.append(de_decoder_pred.tolist()[0])
+        de_target.append(de.tolist()[0])
+
         del(batch)
 
-        break
-
-    
+    # get sacrebleu score
+    en_metric, de_metric = get_sacrebleu_score(en_pred, en_target, de_pred, de_target)
