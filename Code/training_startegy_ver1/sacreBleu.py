@@ -72,7 +72,6 @@ def reconstruct_sentence(input_en, input_de, max_token_len = 500):
         # just extract the last token id
         prediction_id = torch.argmax(predictions, 2)[:, -1]
 
-
         # if prediction_id == [EOS], prediction end
         if prediction_id.item() == eos_idx:
             break
@@ -110,13 +109,17 @@ def get_sacrebleu_score(en_pred, en_target, de_pred, de_target):
     de_pred_sen = []
     de_target_sen = []
     
-    for idx in range(len(en_pred)):
+    for idx in tqdm(range(len(en_pred))):
         en_pred_decode = tokenizer.decode(en_pred[idx], skip_special_tokens=True).replace(' ##', '')
+        en_pred_sen.append(en_pred_decode)
         en_target_decode = tokenizer.decode(en_target[idx], skip_special_tokens=True).replace(' ##', '')
+        en_target_sen.append(en_target_decode)
 
         de_pred_decode = tokenizer.decode(de_pred[idx], skip_special_tokens=True).replace(' ##', '')
+        de_pred_sen.append(de_pred_decode)
         de_target_decode = tokenizer.decode(de_target[idx], skip_special_tokens=True).replace(' ##', '')
-
+        de_target_sen.append(de_target_decode)
+    
     en_metric = metric.compute(predictions = en_pred_sen, references = en_target_sen)
     de_metric = metric.compute(predictions = de_pred_sen, references = de_target_sen)
 
@@ -157,7 +160,7 @@ if __name__ == "__main__":
     )
 
     # Define & Load Model
-    model_file = '' #state_dict() file path
+    model_file = './model/model_0_48500_2.9340843880176544_3.1331980868297467.pt' #state_dict() file path
     model_data = torch.load(model_file)
 
     # define model
@@ -297,16 +300,24 @@ if __name__ == "__main__":
         batch_size = 1,
     )
 
+    # gather target sentences
+    en_target_sen = []
+    de_target_sen = []
+
+    for ex in tqdm(valid_dataset['translation']):
+        en_target_sen.append(ex['en'])
+        de_target_sen.append(ex['de'])
+
     # define parameters
     sos_idx = tokenizer.token_to_id('[SOS]')
     eos_idx = tokenizer.token_to_id('[EOS]')
     pad_idx = tokenizer.token_to_id('[PAD]')
 
     en_pred = []
-    en_target = []
 
     de_pred = []
-    de_target = []
+    
+    cnt = 0
 
     for b in tqdm(eval_dataloader):
         batch = {k: torch.tensor(v).view(1, len(v)).to(device) for k, v in b.items()}
@@ -321,13 +332,12 @@ if __name__ == "__main__":
 
         # en inform
         en_pred.append(en_decoder_pred.tolist()[0])
-        en_target.append(en.tolist()[0])
 
         # de inform
         de_pred.append(de_decoder_pred.tolist()[0])
-        de_target.append(de.tolist()[0])
 
         del(batch)
 
+
     # get sacrebleu score
-    en_metric, de_metric = get_sacrebleu_score(en_pred, en_target, de_pred, de_target)
+    en_metric, de_metric = get_sacrebleu_score(en_pred, en_target_sen, de_pred, de_target_sen)
