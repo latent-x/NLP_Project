@@ -6,25 +6,15 @@ import os
 
 from typing import Optional, Any, Union, Callable
 import torch
-from torch import Tensor
 from torch.nn import functional as F
-from torch.nn import Module
-from torch.nn import MultiheadAttention
 from torch.nn import ModuleList
 from torch.nn.init import xavier_uniform_
-from torch.nn import Dropout
-from torch.nn import Linear
-from torch.nn import LayerNorm
-from torch.nn import MultiheadAttention
 import torch.nn as nn
 import numpy as np
 import math
 from torch.utils.data import DataLoader
 
-from transformers import AdamW
 from transformers import get_scheduler
-from transformers import DataCollatorForSeq2Seq
-from transformers import AutoTokenizer
 from transformers import get_inverse_sqrt_schedule
 
 from datasets import load_dataset
@@ -37,8 +27,6 @@ import random
 
 from tokenizers import Tokenizer
 from tokenizers.models import BPE
-
-from torch.utils.tensorboard import SummaryWriter
 
 # define data_collator
 def data_collate_fn(samples):
@@ -175,7 +163,8 @@ if __name__ == "__main__":
     # parameters
     d_model = 512
     nhead = 8
-    dropout_attention = 0.0
+    d_ff = 2048
+    dropout_rate = 0.1
     batch_first = True
     n_layers = 6
     vocab_size = tokenizer.get_vocab_size()
@@ -185,49 +174,45 @@ if __name__ == "__main__":
 
     # define language1 self attetntion 6ea
     for i in range(1, n_layers + 1):
-        globals()['lan1_self_attention' + str(i)] = MultiheadAttention(d_model, nhead, dropout=dropout_attention, 
-                                                                    batch_first=batch_first, device = device)
+        globals()['lan1_self_attention' + str(i)] = MultiHeadAttention(d_model, nhead, dropout_rate)
 
     # define language2 self attention 6ea
     for i in range(1, n_layers + 1):
-        globals()['lan2_self_attention' + str(i)] = MultiheadAttention(d_model, nhead, dropout=dropout_attention, 
-                                                                    batch_first=batch_first, device = device)
+        globals()['lan2_self_attention' + str(i)] = MultiHeadAttention(d_model, nhead, dropout_rate)
 
     # define language1, language2 multihead attention 6ea
     for i in range(1, n_layers + 1):
-        globals()['lan1_lan2_self_attention' + str(i)] = MultiheadAttention(d_model, nhead, dropout=dropout_attention, 
-                                                                    batch_first=batch_first, device = device)
+        globals()['lan1_lan2_self_attention' + str(i)] = MultiHeadAttention(d_model, nhead, dropout_rate)
 
     # define encoderlayer for lan1 -> lan2
     for i in range(1, n_layers + 1):
         kwargs = {'self_attn': globals()['lan1_self_attention' + str(i)]}
-        globals()['lan1_encoder_layer' + str(i)] = ProposedEncoderLayer(d_model = d_model, nhead = nhead, 
-                                                                        device = device, batch_first = batch_first, **kwargs)
+        globals()['lan1_encoder_layer' + str(i)] = EncoderLayer(d_model, nhead, d_ff, dropout_rate, **kwargs)
 
     # define encoderlayer for lan2 -> lan1
     for i in range(1, n_layers + 1):
         kwargs = {'self_attn': globals()['lan2_self_attention' + str(i)]}
-        globals()['lan2_encoder_layer' + str(i)] = ProposedEncoderLayer(d_model = d_model, nhead = nhead, 
-                                                                        device = device, batch_first = batch_first, **kwargs)
+        globals()['lan2_encoder_layer' + str(i)] = EncoderLayer(d_model, nhead, d_ff, dropout_rate, **kwargs)
 
     # define decoderlayer for lan1 -> lan2
     for i in range(1, n_layers + 1):
         kwargs = {
-            'self_attn': globals()['lan2_self_attention' + str(i)], 
-            'multihead_attn': globals()['lan1_lan2_self_attention' + str(i)]
+            'attn_layer': globals()['lan2_self_attention' + str(i)], 
+            'enc_attn_layer': globals()['lan1_lan2_self_attention' + str(i)]
             }
-        globals()['lan1_decoder_layer' + str(i)] = ProposedDecoderLayer(d_model = d_model, nhead = nhead, 
-                                                                        device = device, batch_first = batch_first, **kwargs)
+        globals()['lan1_decoder_layer' + str(i)] = DecoderLayer(d_model, nhead, d_ff, dropout_rate, **kwargs)
         
     # define decoderlayer for lan2 -> lan1
     for i in range(1, n_layers + 1):
         kwargs = {
-            'self_attn': globals()['lan1_self_attention' + str(i)], 
-            'multihead_attn': globals()['lan1_lan2_self_attention' + str(i)]
+            'attn_layer': globals()['lan1_self_attention' + str(i)], 
+            'enc_attn_layer': globals()['lan1_lan2_self_attention' + str(i)]
             }
-        globals()['lan2_decoder_layer' + str(i)] = ProposedDecoderLayer(d_model = d_model, nhead = nhead, 
-                                                                        device = device, batch_first = batch_first, **kwargs)
-        
+        globals()['lan2_decoder_layer' + str(i)] = DecoderLayer(d_model, nhead, d_ff, dropout_rate, **kwargs)
+
+    tok_embedding = nn.Embedding(vocab_size, d_model, 
+                                        padding_idx=pad_idx)
+
     # encoder_layers for transformer1
     enc_list_for_trans1 = []
     for i in range(1, n_layers + 1):
@@ -237,7 +222,14 @@ if __name__ == "__main__":
         enc_list_for_trans1
     )
 
-    customized_encoder_for_trans1 = ProposedEncoder(enc_layers_for_trans1)
+    kwargs_encoder_trans1 = {
+        'tok_embedding': tok_embedding, 
+        'layers': enc_layers_for_trans1
+    }
+
+    customized_encoder_for_trans1 = Encoder(vocab_size, d_model, n_layers=6, n_heads=nhead, d_ff=d_ff,
+                                            pad_idx=pad_idx, dropout_rate=dropout_rate, max_len=max_length,
+                                            **kwargs_encoder_trans1)
 
     # decoder_layers for transformer1
     dec_list_for_trans1 = []
@@ -248,7 +240,14 @@ if __name__ == "__main__":
         dec_list_for_trans1
     )
 
-    customized_decoder_for_trans1 = ProposedDecoder(dec_layers_for_trans1)
+    kwargs_decoder_trans1 = {
+        'tok_embedding': tok_embedding,
+        'layers': dec_layers_for_trans1
+    }
+
+    customized_decoder_for_trans1 = Decoder(vocab_size, d_model, n_layers=6, n_heads=nhead, d_ff=d_ff,
+                                            pad_idx=pad_idx, dropout_rate=dropout_rate, max_len=max_length,
+                                            **kwargs_decoder_trans1)
 
     # encoder_layers for transformer2
     enc_list_for_trans2 = []
@@ -259,7 +258,14 @@ if __name__ == "__main__":
         enc_list_for_trans2
     )
 
-    customized_encoder_for_trans2 = ProposedEncoder(enc_layers_for_trans2)
+    kwargs_encoder_trans2 = {
+        'tok_embedding': tok_embedding,
+        'layers': enc_layers_for_trans2
+    }
+
+    customized_encoder_for_trans2 = Encoder(vocab_size, d_model, n_layers=6, n_heads=nhead, d_ff=d_ff,
+                                            pad_idx=pad_idx, dropout_rate=dropout_rate, max_len=max_length,
+                                            **kwargs_encoder_trans2)
 
     # decoder_layers for transformer2
     dec_list_for_trans2 = []
@@ -270,31 +276,26 @@ if __name__ == "__main__":
         dec_list_for_trans2
     )
 
-    customized_decoder_for_trans2 = ProposedDecoder(dec_layers_for_trans2)
+    kwargs_decoder_trans2 = {
+        'tok_embedding': tok_embedding,
+        'layers': dec_layers_for_trans2
+    }
 
-    customized_transformer1 = torch.nn.Transformer(custom_encoder=customized_encoder_for_trans1,
-                                                custom_decoder=customized_decoder_for_trans1,
-                                                batch_first=batch_first)
+    customized_decoder_for_trans2 = Decoder(vocab_size, d_model, n_layers=6, n_heads=nhead, d_ff=d_ff,
+                                            pad_idx=pad_idx, dropout_rate=dropout_rate, max_len=max_length,
+                                            **kwargs_decoder_trans2)
 
-    customized_transformer2 = torch.nn.Transformer(custom_encoder=customized_encoder_for_trans2,
-                                                custom_decoder=customized_decoder_for_trans2,
-                                                batch_first=batch_first)
+    generator_for_trans1 = Generator(d_model=d_model, vocab_size=vocab_size)
 
-    tok_embedding = nn.Embedding(vocab_size, d_model, 
-                                      padding_idx=pad_idx)
+    generator_for_trans2 = Generator(d_model=d_model, vocab_size=vocab_size)
 
-    
-    kwargs_transformer1 = {'tok_embedding': tok_embedding,
-                            'transformer': customized_transformer1}
-    wrap_transformer1 =  WrapperForTransformer(d_model = d_model, dropout_rate = 0.1, 
-                                               max_len = max_length, device= device,**kwargs_transformer1)
+    customized_transformer1 = Transformer(encoder=customized_encoder_for_trans1, decoder=customized_decoder_for_trans1,
+                                            generator=generator_for_trans1, pad_idx=pad_idx)
 
-    kwargs_transformer2 = {'tok_embedding': tok_embedding,
-                            'transformer': customized_transformer2}
-    wrap_transformer2 =  WrapperForTransformer(d_model = d_model, dropout_rate = 0.1, 
-                                               max_len = max_length, device = device, **kwargs_transformer1)
+    customized_transformer2 = Transformer(encoder=customized_encoder_for_trans2, decoder=customized_decoder_for_trans2,
+                                            generator=generator_for_trans2, pad_idx=pad_idx)
 
-    model = ProposedModel(wrap_transformer1, wrap_transformer2, d_model, vocab_size)
+    model = ProposedModel(customized_transformer1, customized_transformer2)
 
     #####
     # Part3. Define DataLoader
@@ -392,8 +393,8 @@ if __name__ == "__main__":
             # start from language 2.
             ########
 
-            # act1. lan2 -> lan1 (loop_cond = 'strat2_from_lan2_to_lan1')
-            s2_lan2_lan1 = model(lan1_, lan2_, pad_idx, eos_idx, 'strat2_from_lan2_to_lan1')
+            # act1. lan2 -> lan1 (loop_cond = 'start2_from_lan2_to_lan1')
+            s2_lan2_lan1 = model(lan1_, lan2_, pad_idx, eos_idx, 'start2_from_lan2_to_lan1')
             s2_lan2_lan1_1d = s2_lan2_lan1.contiguous().view(-1, vocab_size)
             s2_lan2_lan1_loss = cross_entropy(s2_lan2_lan1_1d, lan1_decoder_output)
 
@@ -455,7 +456,7 @@ if __name__ == "__main__":
                     ########
 
                     # act1. lan2 -> lan1 (loop_cond = 'strat2_from_lan2_to_lan1')
-                    s2_lan2_lan1 = model(lan1_, lan2_, pad_idx, eos_idx, 'strat2_from_lan2_to_lan1')
+                    s2_lan2_lan1 = model(lan1_, lan2_, pad_idx, eos_idx, 'start2_from_lan2_to_lan1')
                     s2_lan2_lan1_1d = s2_lan2_lan1.contiguous().view(-1, vocab_size)
                     s2_lan2_lan1_loss = cross_entropy(s2_lan2_lan1_1d, lan1_decoder_output)
 
