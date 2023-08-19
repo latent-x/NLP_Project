@@ -442,7 +442,7 @@ class ProposedModel(nn.Module):
             tgt_clone = lan2.clone().detach()
             tgt_clone[lan2 == eos_idx] = pad_idx
 
-            output, _ = self.transformer1(lan1, tgt_clone[:, :-1], pad_idx, eos_idx)
+            output, _ = self.transformer1(lan1, tgt_clone[:, :-1])
 
         elif loop_cond == 'start1_from_lan2_to_lan1':
             # lan2 -> lan1
@@ -460,7 +460,7 @@ class ProposedModel(nn.Module):
             tgt_clone = lan1.clone().detach()
             tgt_clone[lan1 == eos_idx] = pad_idx
 
-            output, _ = self.transformer2(lan2, tgt_clone[:, :-1], pad_idx, eos_idx)
+            output, _ = self.transformer2(lan2, tgt_clone[:, :-1])
 
         elif loop_cond == 'start2_from_lan2_to_lan1':
             # lan2 -> lan1
@@ -478,7 +478,7 @@ class ProposedModel(nn.Module):
             tgt_clone = lan2.clone().detach()
             tgt_clone[lan2 == eos_idx] = pad_idx
 
-            output, _ = self.transformer2(lan2, tgt_clone[:, :-1], pad_idx, eos_idx)
+            output, _ = self.transformer2(lan2, tgt_clone[:, :-1])
 
         elif loop_cond == 'start_2_from_lan1_to_lan2':
             # lan1 -> lan2
@@ -496,6 +496,6 @@ class ProposedModel(nn.Module):
             tgt_clone = lan1.clone().detach()
             tgt_clone[lan1 == eos_idx] = pad_idx
 
-            output, _ = self.transformer1(lan1, tgt_clone[:, :-1], pad_idx, eos_idx)
+            output, _ = self.transformer1(lan1, tgt_clone[:, :-1])
 
         return output
