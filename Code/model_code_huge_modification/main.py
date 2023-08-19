@@ -359,6 +359,8 @@ if __name__ == "__main__":
         cnt = 0
 
         for b in train_dataloader:
+            start_language = random.randint()
+            
             batch = {k: v.to(device) for k, v in b.items()}
             
             lan1_ = batch['en'] # (batch, lan1_seq_len)
@@ -367,55 +369,57 @@ if __name__ == "__main__":
             lan1_decoder_output = lan1_[:, 1:].contiguous().view(-1)
             lan2_decoder_output = lan2_[:, 1:].contiguous().view(-1)
 
-            ########
-            # start from language 1.
-            ########
+            if start_language % 2 == 0:
+                ########
+                # start from language 1.
+                ########
+                # act1. lan1 -> lan2 (loop_cond = 'start1_from_lan1_to_lan2')
+                s1_lan1_lan2 = model(lan1_, lan2_, pad_idx, eos_idx, 'start1_from_lan1_to_lan2')
+                s1_lan1_lan2_1d = s1_lan1_lan2.contiguous().view(-1, vocab_size)
+                s1_lan1_lan2_loss = cross_entropy(s1_lan1_lan2_1d, lan2_decoder_output)
 
-            # act1. lan1 -> lan2 (loop_cond = 'start1_from_lan1_to_lan2')
-            s1_lan1_lan2 = model(lan1_, lan2_, pad_idx, eos_idx, 'start1_from_lan1_to_lan2')
-            s1_lan1_lan2_1d = s1_lan1_lan2.contiguous().view(-1, vocab_size)
-            s1_lan1_lan2_loss = cross_entropy(s1_lan1_lan2_1d, lan2_decoder_output)
+                s1_lan1_lan2_loss.backward()
+                optimizer.step()
+                optimizer.zero_grad()
 
-            s1_lan1_lan2_loss.backward()
-            optimizer.step()
-            optimizer.zero_grad()
+                # act2. lan2 -> lan1 (loop_cond = 'start1_from_lan2_to_lan1')
+                s1_lan2_lan1 = model(lan1_, lan2_, pad_idx, eos_idx, 'start1_from_lan2_to_lan1')
+                s1_lan2_lan1_1d = s1_lan2_lan1.contiguous().view(-1, vocab_size)
+                s1_lan2_lan1_loss = cross_entropy(s1_lan2_lan1_1d, lan1_decoder_output)
 
-            # act2. lan2 -> lan1 (loop_cond = 'start1_from_lan2_to_lan1')
-            s1_lan2_lan1 = model(lan1_, lan2_, pad_idx, eos_idx, 'start1_from_lan2_to_lan1')
-            s1_lan2_lan1_1d = s1_lan2_lan1.contiguous().view(-1, vocab_size)
-            s1_lan2_lan1_loss = cross_entropy(s1_lan2_lan1_1d, lan1_decoder_output)
+                s1_lan2_lan1_loss.backward()
+                optimizer.step()
+                optimizer.zero_grad()
 
-            s1_lan2_lan1_loss.backward()
-            optimizer.step()
-            optimizer.zero_grad()
+                loss_mean = (s1_lan1_lan2_loss.item() + s1_lan2_lan1_loss.item()) / 2
 
             ########
             # start from language 2.
             ########
+            if start_language % 2 == 1:
+                # act1. lan2 -> lan1 (loop_cond = 'start2_from_lan2_to_lan1')
+                s2_lan2_lan1 = model(lan1_, lan2_, pad_idx, eos_idx, 'start2_from_lan2_to_lan1')
+                s2_lan2_lan1_1d = s2_lan2_lan1.contiguous().view(-1, vocab_size)
+                s2_lan2_lan1_loss = cross_entropy(s2_lan2_lan1_1d, lan1_decoder_output)
 
-            # act1. lan2 -> lan1 (loop_cond = 'start2_from_lan2_to_lan1')
-            s2_lan2_lan1 = model(lan1_, lan2_, pad_idx, eos_idx, 'start2_from_lan2_to_lan1')
-            s2_lan2_lan1_1d = s2_lan2_lan1.contiguous().view(-1, vocab_size)
-            s2_lan2_lan1_loss = cross_entropy(s2_lan2_lan1_1d, lan1_decoder_output)
+                s2_lan2_lan1_loss.backward()
+                optimizer.step()
+                optimizer.zero_grad()
 
-            s2_lan2_lan1_loss.backward()
-            optimizer.step()
-            optimizer.zero_grad()
+                # act2. lan1 -> lan2 (loop_cond = 'start_2_from_lan1_to_lan2')
+                s2_lan1_lan2 = model(lan1_, lan2_, pad_idx, eos_idx, 'start_2_from_lan1_to_lan2')
+                s2_lan1_lan2_1d = s2_lan1_lan2.contiguous().view(-1, vocab_size)
+                s2_lan1_lan2_loss = cross_entropy(s2_lan1_lan2_1d, lan2_decoder_output)
 
-            # act2. lan1 -> lan2 (loop_cond = 'start_2_from_lan1_to_lan2')
-            s2_lan1_lan2 = model(lan1_, lan2_, pad_idx, eos_idx, 'start_2_from_lan1_to_lan2')
-            s2_lan1_lan2_1d = s2_lan1_lan2.contiguous().view(-1, vocab_size)
-            s2_lan1_lan2_loss = cross_entropy(s2_lan1_lan2_1d, lan2_decoder_output)
+                s2_lan1_lan2_loss.backward()
+                optimizer.step()
+                optimizer.zero_grad()
 
-            s2_lan1_lan2_loss.backward()
-            optimizer.step()
-            optimizer.zero_grad()
+                loss_mean = (s2_lan1_lan2_loss.item() + s2_lan2_lan1_loss.item())
 
             lr_scheduler.step()
 
-            progress_bar.update(1)
-
-            loss_mean = (s1_lan1_lan2_loss.item() + s1_lan2_lan1_loss.item() + s2_lan2_lan1_loss.item() + s2_lan1_lan2_loss.item()) / 4
+            progress_bar.update(1)            
 
             loss.append(loss_mean)
             loss_period.append(loss_mean)
@@ -431,41 +435,45 @@ if __name__ == "__main__":
                 for v_b in eval_dataloader:
                     v_batch = {k: v.to(device) for k, v in v_b.items()}
 
+                    start_language = random.randint()
+
                     lan1_ = v_batch['en']
                     lan2_ = v_batch['de']
 
                     lan1_decoder_output = lan1_[:, 1:].contiguous().view(-1)
                     lan2_decoder_output = lan2_[:, 1:].contiguous().view(-1)
 
-                    ########
-                    # start from language 1.
-                    ########
+                    if start_language % 2 == 0:
+                        ########
+                        # start from language 1.
+                        ########
+                        # act1. lan1 -> lan2 (loop_cond = 'start1_from_lan1_to_lan2')
+                        s1_lan1_lan2 = model(lan1_, lan2_, pad_idx, eos_idx, 'start1_from_lan1_to_lan2')
+                        s1_lan1_lan2_1d = s1_lan1_lan2.contiguous().view(-1, vocab_size)
+                        s1_lan1_lan2_loss = cross_entropy(s1_lan1_lan2_1d, lan2_decoder_output)
 
-                    # act1. lan1 -> lan2 (loop_cond = 'start1_from_lan1_to_lan2')
-                    s1_lan1_lan2 = model(lan1_, lan2_, pad_idx, eos_idx, 'start1_from_lan1_to_lan2')
-                    s1_lan1_lan2_1d = s1_lan1_lan2.contiguous().view(-1, vocab_size)
-                    s1_lan1_lan2_loss = cross_entropy(s1_lan1_lan2_1d, lan2_decoder_output)
+                        # act2. lan2 -> lan1 (loop_cond = 'start1_from_lan2_to_lan1')
+                        s1_lan2_lan1 = model(lan1_, lan2_, pad_idx, eos_idx, 'start1_from_lan2_to_lan1')
+                        s1_lan2_lan1_1d = s1_lan2_lan1.contiguous().view(-1, vocab_size)
+                        s1_lan2_lan1_loss = cross_entropy(s1_lan2_lan1_1d, lan1_decoder_output)
 
-                    # act2. lan2 -> lan1 (loop_cond = 'start1_from_lan2_to_lan1')
-                    s1_lan2_lan1 = model(lan1_, lan2_, pad_idx, eos_idx, 'start1_from_lan2_to_lan1')
-                    s1_lan2_lan1_1d = s1_lan2_lan1.contiguous().view(-1, vocab_size)
-                    s1_lan2_lan1_loss = cross_entropy(s1_lan2_lan1_1d, lan1_decoder_output)
+                        loss_mean = (s1_lan1_lan2_loss.item() + s1_lan2_lan1_loss.item()) / 2
 
-                    ########
-                    # start from language 2.
-                    ########
+                    if start_language % 2 == 1:
+                        ########
+                        # start from language 2.
+                        ########
+                        # act1. lan2 -> lan1 (loop_cond = 'strat2_from_lan2_to_lan1')
+                        s2_lan2_lan1 = model(lan1_, lan2_, pad_idx, eos_idx, 'start2_from_lan2_to_lan1')
+                        s2_lan2_lan1_1d = s2_lan2_lan1.contiguous().view(-1, vocab_size)
+                        s2_lan2_lan1_loss = cross_entropy(s2_lan2_lan1_1d, lan1_decoder_output)
 
-                    # act1. lan2 -> lan1 (loop_cond = 'strat2_from_lan2_to_lan1')
-                    s2_lan2_lan1 = model(lan1_, lan2_, pad_idx, eos_idx, 'start2_from_lan2_to_lan1')
-                    s2_lan2_lan1_1d = s2_lan2_lan1.contiguous().view(-1, vocab_size)
-                    s2_lan2_lan1_loss = cross_entropy(s2_lan2_lan1_1d, lan1_decoder_output)
+                        # act2. lan1 -> lan2 (loop_cond = 'start_2_from_lan1_to_lan2')
+                        s2_lan1_lan2 = model(lan1_, lan2_, pad_idx, eos_idx, 'start_2_from_lan1_to_lan2')
+                        s2_lan1_lan2_1d = s2_lan1_lan2.contiguous().view(-1, vocab_size)
+                        s2_lan1_lan2_loss = cross_entropy(s2_lan1_lan2_1d, lan2_decoder_output)
 
-                    # act2. lan1 -> lan2 (loop_cond = 'start_2_from_lan1_to_lan2')
-                    s2_lan1_lan2 = model(lan1_, lan2_, pad_idx, eos_idx, 'start_2_from_lan1_to_lan2')
-                    s2_lan1_lan2_1d = s2_lan1_lan2.contiguous().view(-1, vocab_size)
-                    s2_lan1_lan2_loss = cross_entropy(s2_lan1_lan2_1d, lan2_decoder_output)
-
-                    loss_mean = (s1_lan1_lan2_loss.item() + s1_lan2_lan1_loss.item() + s2_lan2_lan1_loss.item() + s2_lan1_lan2_loss.item()) / 4
+                        loss_mean = (s2_lan1_lan2_loss.item() + s2_lan2_lan1_loss.item())
 
                     loss.append(loss_mean)
                     valid_loss.append(loss_mean)
