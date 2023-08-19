@@ -386,6 +386,9 @@ class Transformer(nn.Module):
         src_mask = self.get_pad_mask(src, self.pad_idx) # (B, 1, seq_len)
         tgt_mask = self.get_pad_mask(tgt, self.pad_idx) & self.get_subsquent_mask(tgt) # (B, seq_len, seq_len)
 
+        src_mask.to(device)
+        tgt_mask.to(device)
+
         # encode the source sequence
         enc_output = self.encoder(src, src_mask) # (B, source_seq_len, d_model)
 
